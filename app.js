@@ -1,4 +1,5 @@
 const STORAGE_KEY = "windsor-v1";
+const MAX_TOPIC_NOTES = 3;
 const FILE_DB = "windsor-files";
 const FILE_STORE = "files";
 const MAX_PDF_BYTES = 25 * 1024 * 1024;
@@ -81,7 +82,7 @@ let practiceIndex = 0;
 let practiceRevealed = false;
 let practicePicked = [];
 let practiceReturnPage = "topic";
-const collapsedUnits = new Set();
+const foldOpenState = new Map();
 const objectUrls = new Map();
 let useApi = false;
 let useCloud = false;
@@ -141,16 +142,45 @@ function linkify(text) {
   });
 }
 
+function normalizeTopicNotes(topic) {
+  if (Array.isArray(topic.notesFiles)) {
+    return topic.notesFiles
+      .filter((item) => item?.fileId)
+      .slice(0, MAX_TOPIC_NOTES)
+      .map((item) => ({
+        id: item.id || uid(),
+        fileId: item.fileId,
+        fileName: item.fileName || "Student notes.pdf",
+      }));
+  }
+  if (topic.notesFileId) {
+    return [{ id: uid(), fileId: topic.notesFileId, fileName: topic.notesFileName || "Student notes.pdf" }];
+  }
+  return [];
+}
+
+function topicNotes(topic) {
+  return Array.isArray(topic?.notesFiles) ? topic.notesFiles : [];
+}
+
+function syncTopicNotesLegacy(topic) {
+  const notes = topicNotes(topic);
+  topic.notesFileId = notes[0]?.fileId ?? null;
+  topic.notesFileName = notes[0]?.fileName ?? "";
+}
+
 function normalizeTopic(topic) {
   const order = Number(topic.order);
+  const notesFiles = normalizeTopicNotes(topic);
   return {
     id: topic.id,
     classId: topic.classId ?? null,
     name: topic.name ?? "",
     categoryId: topic.categoryId ?? null,
     overview: topic.overview ?? "",
-    notesFileId: topic.notesFileId ?? null,
-    notesFileName: topic.notesFileName ?? "",
+    notesFiles,
+    notesFileId: notesFiles[0]?.fileId ?? null,
+    notesFileName: notesFiles[0]?.fileName ?? "",
     relatedTopicIds: Array.isArray(topic.relatedTopicIds) ? topic.relatedTopicIds : [],
     order: Number.isFinite(order) ? order : 99,
   };
@@ -237,10 +267,10 @@ function iconButtonHtml({ action, icon, label, id = "", extra = "", modifier = "
   return `<button type="button" class="icon-btn${modifier ? ` ${modifier}` : ""}" data-action="${action}" ${idAttr} ${extra} aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">${iconSvg(icon)}</button>`;
 }
 
-function iconFileLabelHtml({ upload, icon, label, modifier = "" }) {
+function iconFileLabelHtml({ upload, icon, label, modifier = "", extra = "" }) {
   return `<label class="icon-btn${modifier ? ` ${modifier}` : ""}" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">
     ${iconSvg(icon)}
-    <input class="hidden" type="file" accept="application/pdf,.pdf" data-upload="${escapeHtml(upload)}" />
+    <input class="hidden" type="file" accept="application/pdf,.pdf" data-upload="${escapeHtml(upload)}" ${extra} />
   </label>`;
 }
 
@@ -961,6 +991,10 @@ function nextTopicOrder(unitId) {
   return inUnit.reduce((max, topic) => Math.max(max, topic.order ?? 0), 0) + 1;
 }
 
+function nextClassOrder() {
+  return state.classes.reduce((max, cls) => Math.max(max, cls.order ?? 0), 0) + 1;
+}
+
 function parseSortOrder(value, fallback) {
   const raw = String(value ?? "").trim();
   if (!raw) return fallback;
@@ -1054,6 +1088,7 @@ function createTopic(name, unitId, order) {
     name: trimmed,
     categoryId: unitId || null,
     overview: "",
+    notesFiles: [],
     notesFileId: null,
     notesFileName: "",
     relatedTopicIds: [],
@@ -1609,7 +1644,7 @@ function renderClasses() {
           (cls) => `<div class="list-item">
             <button type="button" class="list-item__main btn--ghost" data-action="open-class" data-id="${cls.id}" style="border: 0; padding: 0; min-height: 0; background: transparent;">
               <div class="list-item__title">${escapeHtml(classLabel(cls))}</div>
-              <div class="list-item__meta">${state.students.filter((student) => student.classId === cls.id).length} students · ${state.topics.filter((topic) => topic.classId === cls.id).length} topics</div>
+              <div class="list-item__meta">Order ${cls.order ?? 99} · ${state.students.filter((student) => student.classId === cls.id).length} students · ${state.topics.filter((topic) => topic.classId === cls.id).length} topics</div>
             </button>
             <div class="list-item__actions">
               <button type="button" class="btn btn--small" data-action="edit-class" data-id="${cls.id}">Edit</button>
@@ -1631,6 +1666,11 @@ function renderClasses() {
           <label for="class-subject">Subject</label>
           <input id="class-subject" name="subject" type="text" placeholder="e.g. STEM" required />
         </div>
+        <div class="field">
+          <label for="class-order">Sort order</label>
+          <input id="class-order" name="order" type="number" min="1" step="1" placeholder="e.g. 1" />
+        </div>
+        <p class="hint">Lower numbers appear first in class lists. Leave blank to add it at the end.</p>
         <button type="submit" class="btn btn--primary">Add class</button>
       </div>
     </form>
@@ -1856,6 +1896,29 @@ function unitCollapseKey(categoryId) {
   return `${currentClassId || ""}:${categoryId || "none"}`;
 }
 
+function foldIsOpen(key, defaultOpen = true) {
+  return foldOpenState.has(key) ? foldOpenState.get(key) : defaultOpen;
+}
+
+function foldOpenAttr(key, defaultOpen = true) {
+  return foldIsOpen(key, defaultOpen) ? "open" : "";
+}
+
+function topicSectionHtml({ key, title, countLabel = "", body }) {
+  return `<div class="card">
+    <details class="category-block__fold section-fold" data-fold="${escapeHtml(key)}" ${foldOpenAttr(key, false)}>
+      <summary class="category-block__summary">
+        <span class="category-block__chevron" aria-hidden="true"></span>
+        <span class="category-block__label">
+          <span class="category-block__name">${escapeHtml(title)}</span>
+          ${countLabel ? `<span class="category-block__meta">${escapeHtml(countLabel)}</span>` : ""}
+        </span>
+      </summary>
+      ${body}
+    </details>
+  </div>`;
+}
+
 function topicListItem(topic) {
   const count = activitiesForTopic(topic.id).length;
   const extras = [
@@ -1896,7 +1959,7 @@ function renderTopics() {
             ? `<div class="list">${group.topics.map(topicListItem).join("")}</div>`
             : `<p class="empty">${isBrowse ? "No topics in this unit yet." : "No topics in this unit yet."}</p>`;
           const unitId = group.category.id || "none";
-          const open = collapsedUnits.has(unitCollapseKey(unitId)) ? "" : "open";
+          const open = foldOpenAttr(unitCollapseKey(unitId), true);
           const countLabel = `${group.topics.length} topic${group.topics.length === 1 ? "" : "s"}`;
           return `<div class="category-block">
             <details class="category-block__fold" data-fold="${escapeHtml(unitCollapseKey(unitId))}" ${open}>
@@ -2110,80 +2173,93 @@ function renderTopic() {
         .join("")
     : `<p class="empty">${isBrowse ? "No activities on this topic yet." : "Add the activities you might use when teaching this topic."}</p>`;
 
-  const notesCard = topic.notesFileId
-    ? `<p class="file-name">${escapeHtml(topic.notesFileName || "Student notes.pdf")}</p>
-       <div class="row" style="margin-top: 0.7rem;">
-         ${iconButtonHtml({
-           action: "open-pdf",
-           icon: "pdf",
-           label: "Open PDF",
-           extra: `data-file-id="${topic.notesFileId}" data-title="${escapeHtml(topic.name)} notes"`,
-           modifier: "icon-btn--primary",
-         })}
-         ${
-           isBrowse
-             ? ""
-             : `${iconFileLabelHtml({ upload: "notes", icon: "upload", label: "Replace PDF" })}
-         ${iconButtonHtml({ action: "remove-notes", icon: "trash", label: "Remove", modifier: "icon-btn--danger" })}`
-         }
-       </div>`
-    : isBrowse
-      ? `<p class="empty">No student notes uploaded.</p>`
-      : `<p class="empty">Upload a PDF of notes for students.</p>
-       <div class="row" style="margin-top: 0.6rem;">
+  const notes = topicNotes(topic);
+  const notesList = notes.length
+    ? `<div class="list">${notes
+        .map(
+          (note) => `<div class="list-item">
+      <div class="list-item__main">
+        <div class="list-item__title">${escapeHtml(note.fileName || "Student notes.pdf")}</div>
+      </div>
+      <div class="list-item__actions">
+        ${iconButtonHtml({
+          action: "open-pdf",
+          icon: "pdf",
+          label: "Open PDF",
+          extra: `data-file-id="${note.fileId}" data-title="${escapeHtml(topic.name)} notes"`,
+          modifier: "icon-btn--primary",
+        })}
+        ${
+          isBrowse
+            ? ""
+            : `${iconFileLabelHtml({ upload: "notes", icon: "upload", label: "Replace PDF", extra: `data-id="${note.id}"` })}
+        ${iconButtonHtml({ action: "remove-notes", icon: "trash", label: "Remove", id: note.id, modifier: "icon-btn--danger" })}`
+        }
+      </div>
+    </div>`
+        )
+        .join("")}</div>`
+    : `<p class="empty">${isBrowse ? "No student notes uploaded." : "Upload up to 3 PDFs of notes for students."}</p>`;
+  const notesCard = `${notesList}
+    ${
+      isBrowse || notes.length >= MAX_TOPIC_NOTES
+        ? ""
+        : `<div class="section-fold__actions section-fold__actions--end">
          ${iconFileLabelHtml({ upload: "notes", icon: "upload", label: "Upload PDF", modifier: "icon-btn--primary" })}
-       </div>`;
+       </div>`
+    }`;
 
+  const relatedCount = (topic.relatedTopicIds ?? []).filter((id) => topicById(id)).length;
   const relatedHtml = relatedTopicChips(topic);
   const relatedCard =
     isBrowse && !relatedHtml
       ? ""
-      : `<div class="card">
-      <div class="row" style="justify-content: space-between; margin-bottom: 0.75rem;">
-        <h2 style="margin: 0;">Related topics</h2>
-        ${isBrowse ? "" : `<button type="button" class="btn btn--small" data-action="edit-related">Choose topics</button>`}
-      </div>
-      ${relatedHtml}
-    </div>`;
+      : topicSectionHtml({
+          key: `related:${topic.id}`,
+          title: "Related topics",
+          countLabel: `${relatedCount} linked`,
+          body: `${isBrowse ? "" : `<div class="section-fold__actions">
+        <button type="button" class="btn btn--small" data-action="edit-related">Choose topics</button>
+      </div>`}
+      ${relatedHtml}`,
+        });
 
   const overviewCard =
     topic.overview || !isBrowse
-      ? `<div class="card">
-      ${topic.overview ? `<p class="overview" style="margin-top: 0;">${linkify(topic.overview)}</p>` : `<p class="empty">No brief overview yet.</p>`}
+      ? topicSectionHtml({
+          key: `overview:${topic.id}`,
+          title: "Overview",
+          body: `${topic.overview ? `<p class="overview" style="margin-top: 0;">${linkify(topic.overview)}</p>` : `<p class="empty">No brief overview yet.</p>`}
       ${isBrowse ? "" : `<div class="row"${topic.overview ? ` style="margin-top: 0.85rem;"` : ""}>
         <button type="button" class="btn" data-action="edit-topic-details" data-id="${topic.id}">Edit details</button>
-      </div>`}
-    </div>`
+      </div>`}`,
+        })
       : "";
 
   document.getElementById("topic-content").innerHTML = `
     ${overviewCard}
 
-    <div class="card">
-      <details class="category-block__fold section-fold" data-fold="activities:${topic.id}" ${collapsedUnits.has(`activities:${topic.id}`) ? "" : "open"}>
-        <summary class="category-block__summary">
-          <span class="category-block__chevron" aria-hidden="true"></span>
-          <span class="category-block__label">
-            <span class="category-block__name">Activities</span>
-            <span class="category-block__meta">${activities.length} activit${activities.length === 1 ? "y" : "ies"}</span>
-          </span>
-        </summary>
-        <div class="list list--activities">${activityList}</div>
+    ${topicSectionHtml({
+      key: `activities:${topic.id}`,
+      title: "Activities",
+      countLabel: `${activities.length} activit${activities.length === 1 ? "y" : "ies"}`,
+      body: `<div class="list list--activities">${activityList}</div>
         ${isBrowse ? "" : `<div class="section-fold__actions section-fold__actions--end">
           ${iconButtonHtml({ action: "new-activity", icon: "add", label: "Add activity", modifier: "icon-btn--primary" })}
-        </div>`}
-      </details>
-    </div>
+        </div>`}`,
+    })}
 
     ${
       isBrowse && !videos.length
         ? ""
-        : `<div class="card">
-      <h2>Videos</h2>
-      ${
-        isBrowse
-          ? ""
-          : `<form class="stack" data-form="add-video" style="margin-bottom: 1rem;">
+        : topicSectionHtml({
+            key: `videos:${topic.id}`,
+            title: "Videos",
+            countLabel: `${videos.length} video${videos.length === 1 ? "" : "s"}`,
+            body: `${
+              isBrowse
+                ? ""
+                : `<form class="stack" data-form="add-video" style="margin-bottom: 1rem;">
         <div class="field">
           <label for="video-title">Title</label>
           <input id="video-title" name="title" type="text" placeholder="e.g. Introducing equivalent fractions" required />
@@ -2194,39 +2270,35 @@ function renderTopic() {
         </div>
         <button type="submit" class="btn btn--primary">Add video</button>
       </form>`
-      }
-      <div class="list">${videos.length ? videos.map(videoRow).join("") : `<p class="empty">Add video links to use in class or for revision.</p>`}</div>
-    </div>`
+            }
+      <div class="list">${videos.length ? videos.map(videoRow).join("") : `<p class="empty">Add video links to use in class or for revision.</p>`}</div>`,
+          })
     }
 
     ${
       isBrowse && !papers.length
         ? ""
-        : `<div class="card">
-      <details class="category-block__fold section-fold" data-fold="questions:${topic.id}" ${collapsedUnits.has(`questions:${topic.id}`) ? "" : "open"}>
-        <summary class="category-block__summary">
-          <span class="category-block__chevron" aria-hidden="true"></span>
-          <span class="category-block__label">
-            <span class="category-block__name">Practice questions</span>
-            <span class="category-block__meta">${papers.length} question${papers.length === 1 ? "" : "s"}</span>
-          </span>
-        </summary>
-        <div class="section-fold__actions">
+        : topicSectionHtml({
+            key: `questions:${topic.id}`,
+            title: "Practice questions",
+            countLabel: `${papers.length} question${papers.length === 1 ? "" : "s"}`,
+            body: `<div class="section-fold__actions">
           ${mcqPapersForTopic(topic.id).length ? iconButtonHtml({ action: "start-practice", icon: "practice", label: "Practice" }) : ""}
           ${isBrowse ? "" : `<button type="button" class="btn btn--primary btn--small" data-action="new-question">Add question</button>`}
         </div>
-        <div class="list">${papers.length ? papers.map(pastPaperRow).join("") : `<p class="empty">${isBrowse ? "No questions yet." : "Add multiple-choice questions (A to D) to practise with the class. Tick one correct answer, or two or more for multi-select."}</p>`}</div>
-      </details>
-    </div>`
+        <div class="list">${papers.length ? papers.map(pastPaperRow).join("") : `<p class="empty">${isBrowse ? "No questions yet." : "Add multiple-choice questions (A to D) to practise with the class. Tick one correct answer, or two or more for multi-select."}</p>`}</div>`,
+          })
     }
 
     ${
-      isBrowse && !topic.notesFileId
+      isBrowse && !topicNotes(topic).length
         ? ""
-        : `<div class="card">
-      <h2>Student notes</h2>
-      ${notesCard}
-    </div>`
+        : topicSectionHtml({
+            key: `notes:${topic.id}`,
+            title: "Student notes",
+            countLabel: `${topicNotes(topic).length} of ${MAX_TOPIC_NOTES}`,
+            body: notesCard,
+          })
     }
 
     ${relatedCard}
@@ -2746,14 +2818,25 @@ async function openPdf(fileId, title) {
   }
 }
 
-async function saveNotesPdf(file) {
+async function saveNotesPdf(file, noteId) {
   const topic = topicById(selectedTopicId);
   if (!topic || !file) return;
   const stored = await storePdf(file);
   if (!stored) return;
-  if (topic.notesFileId) await deleteFile(topic.notesFileId);
-  topic.notesFileId = stored.id;
-  topic.notesFileName = stored.name;
+  if (!Array.isArray(topic.notesFiles)) topic.notesFiles = [];
+  const existing = topic.notesFiles.find((item) => item.id === noteId);
+  if (existing) {
+    if (existing.fileId) await deleteFile(existing.fileId);
+    existing.fileId = stored.id;
+    existing.fileName = stored.name;
+  } else if (topic.notesFiles.length < MAX_TOPIC_NOTES) {
+    topic.notesFiles.push({ id: uid(), fileId: stored.id, fileName: stored.name });
+  } else {
+    await deleteFile(stored.id);
+    window.alert(`You can upload up to ${MAX_TOPIC_NOTES} student notes PDFs.`);
+    return;
+  }
+  syncTopicNotesLegacy(topic);
   saveState();
   render();
 }
@@ -2771,7 +2854,7 @@ async function saveJournalPdf(file) {
 }
 
 async function removeTopicFiles(topic) {
-  if (topic.notesFileId) await deleteFile(topic.notesFileId);
+  await Promise.all(topicNotes(topic).map((note) => deleteFile(note.fileId)));
   const papers = pastPapersForTopic(topic.id);
   await Promise.all(papers.map((paper) => deleteFile(paper.fileId)));
 }
@@ -2950,11 +3033,12 @@ function handleAction(action, button) {
   if (action === "open-pdf") openPdf(button.dataset.fileId, button.dataset.title);
   if (action === "remove-notes") {
     const topic = topicById(selectedTopicId);
-    confirmDelete("Remove the student notes PDF from this topic?", async () => {
-      if (!topic) return;
-      await deleteFile(topic.notesFileId);
-      topic.notesFileId = null;
-      topic.notesFileName = "";
+    const note = topicNotes(topic).find((item) => item.id === id);
+    confirmDelete("Remove this student notes PDF from the topic?", async () => {
+      if (!topic || !note) return;
+      await deleteFile(note.fileId);
+      topic.notesFiles = topicNotes(topic).filter((item) => item.id !== note.id);
+      syncTopicNotesLegacy(topic);
       saveState();
       render();
     }, "Remove");
@@ -3145,6 +3229,14 @@ function handleAction(action, button) {
       fields: [
         { name: "grade", label: "Grade level", value: cls?.grade ?? "", required: true, placeholder: "e.g. Grade 6" },
         { name: "subject", label: "Subject", value: cls?.subject ?? "", required: true, placeholder: "e.g. STEM" },
+        {
+          name: "order",
+          label: "Sort order",
+          type: "number",
+          value: cls?.order ?? 1,
+          placeholder: "e.g. 1",
+          required: true,
+        },
       ],
       onSave: (values) => {
         if (!cls) return;
@@ -3153,6 +3245,7 @@ function handleAction(action, button) {
         if (!grade || !subject) return;
         cls.grade = grade;
         cls.subject = subject;
+        cls.order = parseSortOrder(values.order, cls.order ?? 99);
         saveState();
         render();
       },
@@ -3229,7 +3322,7 @@ async function handleForm(form) {
     const grade = String(data.get("grade") ?? "").trim();
     const subject = String(data.get("subject") ?? "").trim();
     if (!grade || !subject) return;
-    const order = state.classes.reduce((max, cls) => Math.max(max, cls.order ?? 0), 0) + 1;
+    const order = parseSortOrder(data.get("order"), nextClassOrder());
     state.classes.push(normalizeClass({ id: uid(), grade, subject, order }));
     saveState();
     render();
@@ -3357,8 +3450,8 @@ document.getElementById("app").addEventListener(
     const details = event.target;
     if (!(details instanceof HTMLDetailsElement) || !details.dataset.fold) return;
     const key = details.dataset.fold;
-    if (details.open) collapsedUnits.delete(key);
-    else collapsedUnits.add(key);
+    if (details.open) foldOpenState.set(key, true);
+    else foldOpenState.set(key, false);
   },
   true
 );
@@ -3407,7 +3500,7 @@ document.getElementById("app").addEventListener("change", (event) => {
     event.target.value = "";
   }
   if (event.target.dataset.upload === "notes" && event.target.files?.[0]) {
-    saveNotesPdf(event.target.files[0]);
+    saveNotesPdf(event.target.files[0], event.target.dataset.id);
     event.target.value = "";
   }
   if (event.target.dataset.upload === "journal" && event.target.files?.[0]) {
