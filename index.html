@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Windsor" />
+    <meta name="theme-color" content="#1b365d" />
+    <title>Windsor — Lesson companion</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Fraunces:opsz,wght@9..144,500;9..144,650;9..144,700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div class="app" id="app">
+      <section id="page-home" class="page">
+        <header class="brand-header">
+          <p class="brand-header__eyebrow">Lesson companion</p>
+          <h1>Windsor</h1>
+          <p class="brand-header__date" id="home-date"></p>
+        </header>
+        <div id="home-content"></div>
+      </section>
+
+      <section id="page-class" class="page hidden">
+        <header class="page-header">
+          <button type="button" class="btn btn--back" data-action="go-home">← Schedule</button>
+          <h1 id="class-title">Class</h1>
+        </header>
+        <div id="class-content"></div>
+      </section>
+
+      <section id="page-classes" class="page hidden">
+        <header class="page-header">
+          <button type="button" class="btn btn--back" data-action="go-home">← Schedule</button>
+          <h1>Classes</h1>
+        </header>
+        <div id="classes-content"></div>
+      </section>
+
+      <section id="page-timetable" class="page hidden">
+        <header class="page-header">
+          <button type="button" class="btn btn--back" data-action="go-home">← Schedule</button>
+          <h1>Timetable</h1>
+        </header>
+        <div id="timetable-content"></div>
+      </section>
+
+      <section id="page-start" class="page hidden">
+        <header class="page-header">
+          <button type="button" class="btn btn--back" data-action="go-class">← Class</button>
+          <h1>Start a lesson</h1>
+        </header>
+        <div id="start-content"></div>
+      </section>
+
+      <section id="page-lesson" class="page hidden">
+        <header class="page-header">
+          <button type="button" class="btn btn--back" data-action="go-class">← Class</button>
+          <h1 id="lesson-title">Lesson</h1>
+        </header>
+        <div id="lesson-content"></div>
+      </section>
+
+      <section id="page-topics" class="page hidden">
+        <header class="page-header">
+          <button type="button" class="btn btn--back" data-action="go-class">← Class</button>
+          <h1 id="topics-title">Units &amp; topics</h1>
+        </header>
+        <div id="topics-content"></div>
+      </section>
+
+      <section id="page-topic" class="page hidden">
+        <header class="page-header">
+          <button type="button" class="btn btn--back" id="topic-back" data-action="go-topic-back">← Topics</button>
+          <h1 id="topic-title">Topic</h1>
+        </header>
+        <div id="topic-content"></div>
+      </section>
+
+      <section id="page-activity" class="page hidden">
+        <header class="page-header page-header--crumbs">
+          <nav class="crumbs" aria-label="Breadcrumb">
+            <button type="button" class="crumbs__link" id="activity-back" data-action="go-activity-back">Topic</button>
+            <span class="crumbs__sep" aria-hidden="true">›</span>
+            <span class="crumbs__current" id="activity-crumb"></span>
+          </nav>
+          <h1 id="activity-title">Activity</h1>
+        </header>
+        <div id="activity-content"></div>
+      </section>
+
+      <section id="page-question" class="page hidden">
+        <header class="page-header">
+          <button type="button" class="btn btn--back" data-action="go-question-back">← Topic</button>
+          <h1 id="question-title">Question</h1>
+        </header>
+        <div id="question-content"></div>
+      </section>
+
+      <section id="page-practice" class="page hidden">
+        <header class="page-header">
+          <button type="button" class="btn btn--back" data-action="go-practice-back">← Back</button>
+          <h1 id="practice-title">Practice</h1>
+        </header>
+        <div id="practice-content"></div>
+      </section>
+
+      <section id="page-pdf" class="page hidden">
+        <header class="page-header">
+          <button type="button" class="btn btn--back" data-action="close-pdf">← Back</button>
+          <h1 id="pdf-title">PDF</h1>
+        </header>
+        <iframe id="pdf-frame" class="pdf-frame" title="PDF viewer"></iframe>
+      </section>
+
+      <section id="page-students" class="page hidden">
+        <header class="page-header">
+          <button type="button" class="btn btn--back" data-action="go-class">← Class</button>
+          <h1>Students</h1>
+        </header>
+        <div id="students-content"></div>
+      </section>
+
+      <section id="page-history" class="page hidden">
+        <header class="page-header">
+          <button type="button" class="btn btn--back" data-action="go-class">← Class</button>
+          <h1>Past lessons</h1>
+        </header>
+        <div id="history-content"></div>
+      </section>
+
+      <section id="page-settings" class="page hidden">
+        <header class="page-header">
+          <button type="button" class="btn btn--back" data-action="go-home">← Schedule</button>
+          <h1>Backup</h1>
+        </header>
+        <div id="settings-content"></div>
+      </section>
+    </div>
+
+    <dialog id="confirm-dialog" class="modal">
+      <form method="dialog" class="modal__form">
+        <p id="confirm-message" class="modal__message"></p>
+        <div class="modal__actions">
+          <button type="submit" value="cancel" class="btn">Cancel</button>
+          <button type="submit" value="ok" class="btn btn--danger" id="confirm-ok">Delete</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="edit-dialog" class="modal">
+      <form id="edit-form" class="modal__form">
+        <h2 id="edit-title">Edit</h2>
+        <div id="edit-fields" class="stack" style="margin: 0.85rem 0 1rem;"></div>
+        <div class="modal__actions">
+          <button type="button" class="btn" id="edit-cancel">Cancel</button>
+          <button type="submit" class="btn btn--primary">Save</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="related-dialog" class="modal modal--wide">
+      <form id="related-form" class="modal__form">
+        <h2>Related topics</h2>
+        <p class="hint" style="margin: 0.35rem 0 0.85rem;">Choose topics from any unit.</p>
+        <div id="related-fields" class="stack"></div>
+        <div class="modal__actions" style="margin-top: 1rem;">
+          <button type="button" class="btn" id="related-cancel">Cancel</button>
+          <button type="submit" class="btn btn--primary">Save</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="app.js"></script>
+  </body>
+</html>

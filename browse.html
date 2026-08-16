@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Windsor browse" />
+    <meta name="theme-color" content="#1b365d" />
+    <title>Windsor — Browse</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Fraunces:opsz,wght@9..144,500;9..144,650;9..144,700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body data-mode="browse">
+    <div class="app" id="app">
+      <section id="page-home" class="page">
+        <header class="brand-header">
+          <p class="brand-header__eyebrow">Browse</p>
+          <h1>Windsor</h1>
+          <p class="brand-header__date" id="home-date"></p>
+        </header>
+        <div id="home-content"></div>
+      </section>
+
+      <section id="page-topics" class="page hidden">
+        <header class="page-header">
+          <button type="button" class="btn btn--back" data-action="go-home">← Subjects</button>
+          <h1 id="topics-title">Units &amp; topics</h1>
+        </header>
+        <div id="topics-content"></div>
+      </section>
+
+      <section id="page-topic" class="page hidden">
+        <header class="page-header">
+          <button type="button" class="btn btn--back" id="topic-back" data-action="go-topic-back">← Topics</button>
+          <h1 id="topic-title">Topic</h1>
+        </header>
+        <div id="topic-content"></div>
+      </section>
+
+      <section id="page-activity" class="page hidden">
+        <header class="page-header page-header--crumbs">
+          <nav class="crumbs" aria-label="Breadcrumb">
+            <button type="button" class="crumbs__link" id="activity-back" data-action="go-activity-back">Topic</button>
+            <span class="crumbs__sep" aria-hidden="true">›</span>
+            <span class="crumbs__current" id="activity-crumb"></span>
+          </nav>
+          <h1 id="activity-title">Activity</h1>
+        </header>
+        <div id="activity-content"></div>
+      </section>
+
+      <section id="page-practice" class="page hidden">
+        <header class="page-header">
+          <button type="button" class="btn btn--back" data-action="go-practice-back">← Topic</button>
+          <h1 id="practice-title">Practice</h1>
+        </header>
+        <div id="practice-content"></div>
+      </section>
+
+      <section id="page-pdf" class="page hidden">
+        <header class="page-header">
+          <button type="button" class="btn btn--back" data-action="close-pdf">← Back</button>
+          <h1 id="pdf-title">PDF</h1>
+        </header>
+        <iframe id="pdf-frame" class="pdf-frame" title="PDF viewer"></iframe>
+      </section>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
