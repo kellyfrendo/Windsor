@@ -434,22 +434,16 @@ textarea {
 .activity-card__view {
   display: inline-flex;
   align-items: center;
-  gap: 0.1rem;
+  justify-content: center;
   flex-shrink: 0;
   color: var(--navy);
-  font-weight: 700;
-  font-size: 0.95rem;
-  letter-spacing: 0.01em;
   padding-left: 0.35rem;
 }
 
-.activity-card__chevron {
-  font-family: var(--display);
-  font-size: 1.55rem;
-  font-weight: 500;
-  line-height: 1;
-  color: var(--gold);
-  transform: translateY(-0.05em);
+.activity-card__view .icon-svg {
+  width: 1.35rem;
+  height: 1.35rem;
+  display: block;
 }
 
 .activity-card__delete {
@@ -973,7 +967,8 @@ label.icon-btn {
 }
 
 .category-block__fold .list,
-.category-block__fold .empty {
+.category-block__fold .empty,
+.category-block__fold .topic-pick {
   margin-left: 1.15rem;
 }
 

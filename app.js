@@ -257,6 +257,7 @@ function iconSvg(name) {
     pdf: '<path d="M14 3H7a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/>',
     upload:
       '<path d="M12 16V5"/><path d="m8 9 4-4 4 4"/><path d="M5 19h14"/>',
+    view: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   }[name];
   if (!inner) return "";
   return `<svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
@@ -1786,12 +1787,24 @@ function renderStart() {
 
   const topicList = grouped.length
     ? grouped
-        .map(
-          (group) => `<div class="category-block">
-            <h2>${escapeHtml(group.category.name)}</h2>
-            <div class="topic-pick">${group.topics.map(topicPickButton).join("")}</div>
-          </div>`
-        )
+        .map((group) => {
+          const unitId = group.category.id || "none";
+          const key = `start:${currentClassId || ""}:${unitId}`;
+          const selectedHere = group.topics.some((topic) => topic.id === selectedTopicId);
+          const countLabel = `${group.topics.length} topic${group.topics.length === 1 ? "" : "s"}`;
+          return `<div class="category-block">
+            <details class="category-block__fold" data-fold="${escapeHtml(key)}" ${foldOpenAttr(key, selectedHere)}>
+              <summary class="category-block__summary">
+                <span class="category-block__chevron" aria-hidden="true"></span>
+                <span class="category-block__label">
+                  <span class="category-block__name">${escapeHtml(group.category.name)}</span>
+                  <span class="category-block__meta">${countLabel}</span>
+                </span>
+              </summary>
+              <div class="topic-pick">${group.topics.map(topicPickButton).join("")}</div>
+            </details>
+          </div>`;
+        })
         .join("")
     : `<p class="empty">Add a topic first, then come back to start a lesson.</p>`;
 
@@ -2043,12 +2056,12 @@ function renderTopics() {
     </form>`;
 
   document.getElementById("topics-content").innerHTML = `
-    ${journalCardHtml(currentClass())}
-    ${editor}
     <div class="card">
       <h2>Units &amp; topics</h2>
       ${list}
     </div>
+    ${editor}
+    ${journalCardHtml(currentClass())}
   `;
 }
 
@@ -2085,8 +2098,8 @@ function videoRow(video) {
       isBrowse
         ? ""
         : `<div class="list-item__actions">
-      <button type="button" class="btn btn--small" data-action="edit-video" data-id="${video.id}">Edit</button>
-      <button type="button" class="btn btn--small" data-action="delete-video" data-id="${video.id}">Delete</button>
+      ${iconButtonHtml({ action: "edit-video", icon: "edit", label: "Edit", id: video.id })}
+      ${iconButtonHtml({ action: "delete-video", icon: "trash", label: "Delete", id: video.id, modifier: "icon-btn--danger" })}
     </div>`
     }
   </div>`;
@@ -2131,11 +2144,19 @@ function renderTopic() {
   const back = document.getElementById("topic-back");
   const crumb = document.getElementById("topic-crumb");
   const sep = back?.nextElementSibling;
-  if (back) back.textContent = topicReturnPage === "lesson" && !isBrowse ? "Lesson" : "Topics";
   const unit = categoryById(topic.categoryId)?.name?.trim() || "";
-  if (crumb) crumb.textContent = unit;
-  if (crumb) crumb.hidden = !unit;
-  if (sep?.classList.contains("crumbs__sep")) sep.hidden = !unit;
+  const fromLesson = topicReturnPage === "lesson" && !isBrowse;
+  if (fromLesson) {
+    if (back) back.textContent = "Lesson";
+    if (crumb) crumb.textContent = unit || topic.name;
+    if (crumb) crumb.hidden = false;
+    if (sep?.classList.contains("crumbs__sep")) sep.hidden = false;
+  } else {
+    if (back) back.textContent = unit || "Topics";
+    if (crumb) crumb.textContent = topic.name;
+    if (crumb) crumb.hidden = false;
+    if (sep?.classList.contains("crumbs__sep")) sep.hidden = false;
+  }
 
   const activities = activitiesForTopic(topic.id);
   const videos = videosForTopic(topic.id);
@@ -2165,7 +2186,7 @@ function renderTopic() {
                 </span>
                 ${meta}
               </span>
-              <span class="activity-card__view">View <span class="activity-card__chevron" aria-hidden="true">›</span></span>
+              <span class="activity-card__view" title="View" aria-hidden="true">${iconSvg("view")}</span>
             </button>
             ${isBrowse ? "" : `<button type="button" class="activity-card__delete" data-action="delete-activity" data-id="${activity.id}" aria-label="Delete" title="Delete">${deleteIconHtml()}</button>`}
           </div>`;
@@ -2216,7 +2237,7 @@ function renderTopic() {
       ? ""
       : topicSectionHtml({
           key: `related:${topic.id}`,
-          title: "Related topics",
+          title: "Related Topics",
           countLabel: `${relatedCount} linked`,
           body: `${isBrowse ? "" : `<div class="section-fold__actions">
         <button type="button" class="btn btn--small" data-action="edit-related">Choose topics</button>
@@ -2230,8 +2251,8 @@ function renderTopic() {
           key: `overview:${topic.id}`,
           title: "Overview",
           body: `${topic.overview ? `<p class="overview" style="margin-top: 0;">${linkify(topic.overview)}</p>` : `<p class="empty">No brief overview yet.</p>`}
-      ${isBrowse ? "" : `<div class="row"${topic.overview ? ` style="margin-top: 0.85rem;"` : ""}>
-        <button type="button" class="btn" data-action="edit-topic-details" data-id="${topic.id}">Edit details</button>
+      ${isBrowse ? "" : `<div class="section-fold__actions${topic.overview ? " section-fold__actions--end" : ""}">
+        ${iconButtonHtml({ action: "edit-topic-details", icon: "edit", label: "Edit details", id: topic.id })}
       </div>`}`,
         })
       : "";
@@ -2256,10 +2277,11 @@ function renderTopic() {
             key: `videos:${topic.id}`,
             title: "Videos",
             countLabel: `${videos.length} video${videos.length === 1 ? "" : "s"}`,
-            body: `${
+            body: `<div class="list">${videos.length ? videos.map(videoRow).join("") : `<p class="empty">${isBrowse ? "No videos yet." : "Add video links to use in class or for revision."}</p>`}</div>
+            ${
               isBrowse
                 ? ""
-                : `<form class="stack" data-form="add-video" style="margin-bottom: 1rem;">
+                : `<form class="stack section-fold__actions--end" data-form="add-video">
         <div class="field">
           <label for="video-title">Title</label>
           <input id="video-title" name="title" type="text" placeholder="e.g. Introducing equivalent fractions" required />
@@ -2268,10 +2290,9 @@ function renderTopic() {
           <label for="video-url">Link</label>
           <input id="video-url" name="url" type="url" placeholder="YouTube or other video URL" required />
         </div>
-        <button type="submit" class="btn btn--primary">Add video</button>
+        <button type="submit" class="icon-btn icon-btn--primary" aria-label="Add video" title="Add video">${iconSvg("add")}</button>
       </form>`
-            }
-      <div class="list">${videos.length ? videos.map(videoRow).join("") : `<p class="empty">Add video links to use in class or for revision.</p>`}</div>`,
+            }`,
           })
     }
 
@@ -2280,11 +2301,11 @@ function renderTopic() {
         ? ""
         : topicSectionHtml({
             key: `questions:${topic.id}`,
-            title: "Practice questions",
+            title: "Practice Questions",
             countLabel: `${papers.length} question${papers.length === 1 ? "" : "s"}`,
             body: `<div class="section-fold__actions">
           ${mcqPapersForTopic(topic.id).length ? iconButtonHtml({ action: "start-practice", icon: "practice", label: "Practice" }) : ""}
-          ${isBrowse ? "" : `<button type="button" class="btn btn--primary btn--small" data-action="new-question">Add question</button>`}
+          ${isBrowse ? "" : iconButtonHtml({ action: "new-question", icon: "add", label: "Add question", modifier: "icon-btn--primary" })}
         </div>
         <div class="list">${papers.length ? papers.map(pastPaperRow).join("") : `<p class="empty">${isBrowse ? "No questions yet." : "Add multiple-choice questions (A to D) to practise with the class. Tick one correct answer, or two or more for multi-select."}</p>`}</div>`,
           })
@@ -2295,7 +2316,7 @@ function renderTopic() {
         ? ""
         : topicSectionHtml({
             key: `notes:${topic.id}`,
-            title: "Student notes",
+            title: "Student Notes",
             countLabel: `${topicNotes(topic).length} of ${MAX_TOPIC_NOTES}`,
             body: notesCard,
           })
