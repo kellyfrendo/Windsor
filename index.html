@@ -75,8 +75,12 @@
       </section>
 
       <section id="page-topic" class="page hidden">
-        <header class="page-header">
-          <button type="button" class="btn btn--back" id="topic-back" data-action="go-topic-back">← Topics</button>
+        <header class="page-header page-header--crumbs">
+          <nav class="crumbs" aria-label="Breadcrumb">
+            <button type="button" class="crumbs__link" id="topic-back" data-action="go-topic-back">Topics</button>
+            <span class="crumbs__sep" aria-hidden="true">›</span>
+            <span class="crumbs__current" id="topic-crumb"></span>
+          </nav>
           <h1 id="topic-title">Topic</h1>
         </header>
         <div id="topic-content"></div>

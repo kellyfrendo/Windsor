@@ -81,6 +81,7 @@ let practiceIndex = 0;
 let practiceRevealed = false;
 let practicePicked = [];
 let practiceReturnPage = "topic";
+const collapsedUnits = new Set();
 const objectUrls = new Map();
 let useApi = false;
 let useCloud = false;
@@ -141,6 +142,7 @@ function linkify(text) {
 }
 
 function normalizeTopic(topic) {
+  const order = Number(topic.order);
   return {
     id: topic.id,
     classId: topic.classId ?? null,
@@ -150,6 +152,7 @@ function normalizeTopic(topic) {
     notesFileId: topic.notesFileId ?? null,
     notesFileName: topic.notesFileName ?? "",
     relatedTopicIds: Array.isArray(topic.relatedTopicIds) ? topic.relatedTopicIds : [],
+    order: Number.isFinite(order) ? order : 99,
   };
 }
 
@@ -211,6 +214,38 @@ function activityTagIconsHtml(activity) {
         `<span class="tag-icon" title="${escapeHtml(tag.label)}">${tagIconSvg(tag.id)}</span>`
     )
     .join("")}</span>`;
+}
+
+function iconSvg(name) {
+  const inner = {
+    trash:
+      '<path d="M4 7h16"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/><path d="M10 11v6"/><path d="M14 11v6"/>',
+    edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+    practice:
+      '<circle cx="12" cy="12" r="9"/><path d="m10 8.2 6.2 3.8-6.2 3.8z" fill="currentColor" stroke="none"/>',
+    add: '<path d="M12 5v14"/><path d="M5 12h14"/>',
+    pdf: '<path d="M14 3H7a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/>',
+    upload:
+      '<path d="M12 16V5"/><path d="m8 9 4-4 4 4"/><path d="M5 19h14"/>',
+  }[name];
+  if (!inner) return "";
+  return `<svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
+}
+
+function iconButtonHtml({ action, icon, label, id = "", extra = "", modifier = "" }) {
+  const idAttr = id ? `data-id="${id}"` : "";
+  return `<button type="button" class="icon-btn${modifier ? ` ${modifier}` : ""}" data-action="${action}" ${idAttr} ${extra} aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">${iconSvg(icon)}</button>`;
+}
+
+function iconFileLabelHtml({ upload, icon, label, modifier = "" }) {
+  return `<label class="icon-btn${modifier ? ` ${modifier}` : ""}" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">
+    ${iconSvg(icon)}
+    <input class="hidden" type="file" accept="application/pdf,.pdf" data-upload="${escapeHtml(upload)}" />
+  </label>`;
+}
+
+function deleteIconHtml() {
+  return iconSvg("trash");
 }
 
 function activityTagPickerHtml(selectedIds) {
@@ -326,6 +361,17 @@ function stampClassId(items, classId) {
   return items.map((item) => ({ ...item, classId: item.classId ?? classId }));
 }
 
+function normalizeClass(cls) {
+  return {
+    id: cls.id,
+    subject: cls.subject ?? "",
+    grade: cls.grade ?? "",
+    order: cls.order ?? 99,
+    journalFileId: cls.journalFileId ?? null,
+    journalFileName: cls.journalFileName ?? "",
+  };
+}
+
 function sameClass(a, b) {
   return a.subject.toLowerCase() === b.subject.toLowerCase() && a.grade.toLowerCase() === b.grade.toLowerCase();
 }
@@ -334,10 +380,24 @@ function withDefaultClasses(classes) {
   const next = [...classes];
   DEFAULT_CLASSES.forEach((item) => {
     if (!next.some((cls) => sameClass(cls, item))) {
-      next.push({ id: uid(), subject: item.subject, grade: item.grade, order: item.order });
+      next.push(normalizeClass({ id: uid(), subject: item.subject, grade: item.grade, order: item.order }));
     }
   });
   return next;
+}
+
+function unitOrderFromName(name) {
+  const text = String(name ?? "");
+  const word = text.match(/big idea\s+(one|two|three|four|five)/i);
+  if (word) {
+    return { one: 1, two: 2, three: 3, four: 4, five: 5 }[word[1].toLowerCase()];
+  }
+  const numbered = text.match(/big idea\s+(\d+)/i);
+  if (numbered) {
+    const order = Number(numbered[1]);
+    if (order >= 1 && order <= 5) return order;
+  }
+  return null;
 }
 
 function withDefaultUnits(classes, categories) {
@@ -346,12 +406,19 @@ function withDefaultUnits(classes, categories) {
     const units = DEFAULT_UNITS[`${cls.subject}|${cls.grade}`];
     if (!units) return;
     units.forEach((unit) => {
-      const exists = next.some(
+      const existing = next.find(
         (item) => item.classId === cls.id && item.name.toLowerCase() === unit.name.toLowerCase()
       );
-      if (!exists) {
+      if (existing) {
+        existing.order = unit.order;
+      } else {
         next.push({ id: uid(), classId: cls.id, name: unit.name, order: unit.order });
       }
+    });
+    next.forEach((item) => {
+      if (item.classId !== cls.id) return;
+      const inferred = unitOrderFromName(item.name);
+      if (inferred) item.order = inferred;
     });
   });
   return next;
@@ -368,7 +435,7 @@ function normalizeState(parsed) {
   if (!classes.length && hasLegacyData) {
     classes = [{ id: uid(), subject: "My class", grade: "", order: 99 }];
   }
-  classes = withDefaultClasses(classes);
+  classes = withDefaultClasses(classes).map(normalizeClass);
   categories = withDefaultUnits(classes, categories);
   const fallbackId = classes.find((cls) => cls.subject === "My class")?.id ?? classes[0]?.id ?? null;
   if (fallbackId) {
@@ -741,6 +808,32 @@ function classLabel(item) {
   return item.subject || item.grade || "Class";
 }
 
+function journalCardHtml(cls) {
+  if (!cls) return "";
+  if (isBrowse && !cls.journalFileId) return "";
+  const body = cls.journalFileId
+    ? `<p class="file-name">${escapeHtml(cls.journalFileName || "Journal.pdf")}</p>
+       <div class="row" style="margin-top: 0.7rem;">
+         <button type="button" class="btn btn--primary" data-action="open-pdf" data-file-id="${cls.journalFileId}" data-title="${escapeHtml(classLabel(cls))} journal">Open PDF</button>
+         ${
+           isBrowse
+             ? ""
+             : `<label class="btn">Replace
+           <input class="hidden" type="file" accept="application/pdf,.pdf" data-upload="journal" />
+         </label>
+         <button type="button" class="btn" data-action="remove-journal">Remove</button>`
+         }
+       </div>`
+    : `<p class="empty">Upload a PDF of this subject's journal.</p>
+       <label class="btn btn--primary" style="margin-top: 0.6rem;">Upload PDF
+         <input class="hidden" type="file" accept="application/pdf,.pdf" data-upload="journal" />
+       </label>`;
+  return `<div class="card">
+    <h2>Journal</h2>
+    ${body}
+  </div>`;
+}
+
 function currentClass() {
   return classById(currentClassId);
 }
@@ -855,7 +948,25 @@ function sortedCategories() {
 }
 
 function sortedTopics(topics = classTopics()) {
-  return [...topics].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+  return [...topics].sort((a, b) => {
+    const orderA = a.order ?? 99;
+    const orderB = b.order ?? 99;
+    if (orderA !== orderB) return orderA - orderB;
+    return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+  });
+}
+
+function nextTopicOrder(unitId) {
+  const inUnit = classTopics().filter((topic) => (topic.categoryId || "") === (unitId || ""));
+  return inUnit.reduce((max, topic) => Math.max(max, topic.order ?? 0), 0) + 1;
+}
+
+function parseSortOrder(value, fallback) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return fallback;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.round(parsed);
 }
 
 function topicsGroupedByCategory() {
@@ -929,7 +1040,7 @@ function parseNameLines(value) {
   return names;
 }
 
-function createTopic(name, unitId) {
+function createTopic(name, unitId, order) {
   const trimmed = String(name ?? "").trim();
   if (!trimmed || !currentClassId) return null;
   const exists = classTopics().some(
@@ -937,7 +1048,7 @@ function createTopic(name, unitId) {
       topic.name.toLowerCase() === trimmed.toLowerCase() && (topic.categoryId || "") === (unitId || "")
   );
   if (exists) return null;
-  const topic = {
+  const topic = normalizeTopic({
     id: uid(),
     classId: currentClassId,
     name: trimmed,
@@ -946,7 +1057,8 @@ function createTopic(name, unitId) {
     notesFileId: null,
     notesFileName: "",
     relatedTopicIds: [],
-  };
+    order: parseSortOrder(order, nextTopicOrder(unitId)),
+  });
   state.topics.push(topic);
   return topic;
 }
@@ -1467,6 +1579,7 @@ function renderClass() {
 
   document.getElementById("class-content").innerHTML = `
     ${setup}
+    ${journalCardHtml(cls)}
     <div class="home-grid">
       ${continueCard}
       ${today ? `<button type="button" class="nav-card" data-action="go-start">
@@ -1739,6 +1852,10 @@ function renderLesson() {
   `;
 }
 
+function unitCollapseKey(categoryId) {
+  return `${currentClassId || ""}:${categoryId || "none"}`;
+}
+
 function topicListItem(topic) {
   const count = activitiesForTopic(topic.id).length;
   const extras = [
@@ -1778,9 +1895,21 @@ function renderTopics() {
           const topics = group.topics.length
             ? `<div class="list">${group.topics.map(topicListItem).join("")}</div>`
             : `<p class="empty">${isBrowse ? "No topics in this unit yet." : "No topics in this unit yet."}</p>`;
+          const unitId = group.category.id || "none";
+          const open = collapsedUnits.has(unitCollapseKey(unitId)) ? "" : "open";
+          const countLabel = `${group.topics.length} topic${group.topics.length === 1 ? "" : "s"}`;
           return `<div class="category-block">
-            <h2>${escapeHtml(group.category.name)} ${actions}</h2>
-            ${topics}
+            <details class="category-block__fold" data-fold="${escapeHtml(unitCollapseKey(unitId))}" ${open}>
+              <summary class="category-block__summary">
+                <span class="category-block__chevron" aria-hidden="true"></span>
+                <span class="category-block__label">
+                  <span class="category-block__name">${escapeHtml(group.category.name)}</span>
+                  <span class="category-block__meta">${countLabel}</span>
+                </span>
+              </summary>
+              ${actions ? `<div class="category-block__actions">${actions}</div>` : ""}
+              ${topics}
+            </details>
           </div>`;
         })
         .join("")
@@ -1809,6 +1938,11 @@ function renderTopics() {
           <label for="topic-name">New topic</label>
           <input id="topic-name" name="name" type="text" placeholder="e.g. Binary numbers" required />
         </div>
+        <div class="field">
+          <label for="topic-order">Sort order</label>
+          <input id="topic-order" name="order" type="number" min="1" step="1" placeholder="e.g. 1" />
+        </div>
+        <p class="hint">Lower numbers appear first in that unit. Leave blank to add it at the end.</p>
         <button type="submit" class="btn btn--primary" ${units.length ? "" : "disabled"}>Add topic</button>
       </div>
     </form>
@@ -1824,7 +1958,7 @@ function renderTopics() {
           <label for="bulk-topic-names">Topic names</label>
           <textarea id="bulk-topic-names" name="names" placeholder="One topic per line&#10;e.g. Binary numbers&#10;Creative computing&#10;The internet" ${units.length ? "required" : "disabled"}></textarea>
         </div>
-        <p class="hint">Each line becomes a topic in the unit you choose. Existing names in that unit are skipped.</p>
+        <p class="hint">Each line becomes a topic in the unit you choose, in this list order. Existing names in that unit are skipped.</p>
         <button type="submit" class="btn btn--primary" ${units.length ? "" : "disabled"}>Add topics</button>
       </div>
     </form>
@@ -1846,6 +1980,7 @@ function renderTopics() {
     </form>`;
 
   document.getElementById("topics-content").innerHTML = `
+    ${journalCardHtml(currentClass())}
     ${editor}
     <div class="card">
       <h2>Units &amp; topics</h2>
@@ -1895,26 +2030,29 @@ function videoRow(video) {
 }
 
 function pastPaperRow(paper) {
-  const preview = paperHasQuestion(paper)
-    ? paperPrompt(paper)
-    : paper.notes
+  const stem = String(paper.stem ?? "").trim();
+  const source = String(paper.title ?? "").trim();
+  const main = stem || source || paper.notes || paper.fileName || "No question text yet";
+  const meta = stem
+    ? source
+    : paper.notes && paper.notes !== main
       ? paper.notes
-      : paper.fileName
+      : paper.fileName && paper.fileName !== main
         ? paper.fileName
-        : "No question text yet";
+        : "";
   return `<div class="list-item">
     <button type="button" class="list-item__main btn--ghost" data-action="${paperHasQuestion(paper) ? "start-practice" : "open-question"}" data-id="${paper.id}" style="border: 0; padding: 0; min-height: 0; background: transparent;">
-      <div class="list-item__title">${escapeHtml(paperLabel(paper))}</div>
-      <div class="list-item__meta">${escapeHtml(preview)}${paper.stem && paper.title ? ` · ${escapeHtml(paper.stem.split("\n")[0])}` : ""}</div>
+      <div class="list-item__title sample-question__stem">${escapeHtml(main)}</div>
+      ${meta ? `<div class="list-item__meta">${escapeHtml(meta)}</div>` : ""}
     </button>
     <div class="list-item__actions">
-      ${paperHasQuestion(paper) ? `<button type="button" class="btn btn--small" data-action="start-practice" data-id="${paper.id}">Practice</button>` : ""}
+      ${paperHasQuestion(paper) ? iconButtonHtml({ action: "start-practice", icon: "practice", label: "Practice", id: paper.id }) : ""}
       ${paper.fileId ? `<button type="button" class="btn btn--small" data-action="open-pdf" data-file-id="${paper.fileId}" data-title="${escapeHtml(paperLabel(paper))}">Open PDF</button>` : ""}
       ${
         isBrowse
           ? ""
-          : `<button type="button" class="btn btn--small" data-action="open-question" data-id="${paper.id}">Edit</button>
-      <button type="button" class="btn btn--small" data-action="delete-past-paper" data-id="${paper.id}">Delete</button>`
+          : `${iconButtonHtml({ action: "open-question", icon: "edit", label: "Edit", id: paper.id })}
+      ${iconButtonHtml({ action: "delete-past-paper", icon: "trash", label: "Delete", id: paper.id, modifier: "icon-btn--danger" })}`
       }
     </div>
   </div>`;
@@ -1927,7 +2065,14 @@ function renderTopic() {
     return;
   }
   document.getElementById("topic-title").textContent = topic.name;
-  document.getElementById("topic-back").textContent = topicReturnPage === "lesson" ? "← Lesson" : "← Topics";
+  const back = document.getElementById("topic-back");
+  const crumb = document.getElementById("topic-crumb");
+  const sep = back?.nextElementSibling;
+  if (back) back.textContent = topicReturnPage === "lesson" && !isBrowse ? "Lesson" : "Topics";
+  const unit = categoryById(topic.categoryId)?.name?.trim() || "";
+  if (crumb) crumb.textContent = unit;
+  if (crumb) crumb.hidden = !unit;
+  if (sep?.classList.contains("crumbs__sep")) sep.hidden = !unit;
 
   const activities = activitiesForTopic(topic.id);
   const videos = videosForTopic(topic.id);
@@ -1959,7 +2104,7 @@ function renderTopic() {
               </span>
               <span class="activity-card__view">View <span class="activity-card__chevron" aria-hidden="true">›</span></span>
             </button>
-            ${isBrowse ? "" : `<button type="button" class="activity-card__delete" data-action="delete-activity" data-id="${activity.id}">Delete</button>`}
+            ${isBrowse ? "" : `<button type="button" class="activity-card__delete" data-action="delete-activity" data-id="${activity.id}" aria-label="Delete" title="Delete">${deleteIconHtml()}</button>`}
           </div>`;
         })
         .join("")
@@ -1968,22 +2113,26 @@ function renderTopic() {
   const notesCard = topic.notesFileId
     ? `<p class="file-name">${escapeHtml(topic.notesFileName || "Student notes.pdf")}</p>
        <div class="row" style="margin-top: 0.7rem;">
-         <button type="button" class="btn btn--primary" data-action="open-pdf" data-file-id="${topic.notesFileId}" data-title="${escapeHtml(topic.name)} notes">Open PDF</button>
+         ${iconButtonHtml({
+           action: "open-pdf",
+           icon: "pdf",
+           label: "Open PDF",
+           extra: `data-file-id="${topic.notesFileId}" data-title="${escapeHtml(topic.name)} notes"`,
+           modifier: "icon-btn--primary",
+         })}
          ${
            isBrowse
              ? ""
-             : `<label class="btn">Replace
-           <input class="hidden" type="file" accept="application/pdf,.pdf" data-upload="notes" />
-         </label>
-         <button type="button" class="btn" data-action="remove-notes">Remove</button>`
+             : `${iconFileLabelHtml({ upload: "notes", icon: "upload", label: "Replace PDF" })}
+         ${iconButtonHtml({ action: "remove-notes", icon: "trash", label: "Remove", modifier: "icon-btn--danger" })}`
          }
        </div>`
     : isBrowse
       ? `<p class="empty">No student notes uploaded.</p>`
       : `<p class="empty">Upload a PDF of notes for students.</p>
-       <label class="btn btn--primary" style="margin-top: 0.6rem;">Upload PDF
-         <input class="hidden" type="file" accept="application/pdf,.pdf" data-upload="notes" />
-       </label>`;
+       <div class="row" style="margin-top: 0.6rem;">
+         ${iconFileLabelHtml({ upload: "notes", icon: "upload", label: "Upload PDF", modifier: "icon-btn--primary" })}
+       </div>`;
 
   const relatedHtml = relatedTopicChips(topic);
   const relatedCard =
@@ -1997,58 +2146,34 @@ function renderTopic() {
       ${relatedHtml}
     </div>`;
 
-  document.getElementById("topic-content").innerHTML = `
-    <div class="card">
-      <span class="badge">${escapeHtml(categoryName(topic.categoryId))}</span>
-      ${topic.overview ? `<p class="overview">${linkify(topic.overview)}</p>` : isBrowse ? "" : `<p class="empty">No brief overview yet.</p>`}
-      ${isBrowse ? "" : `<div class="row">
+  const overviewCard =
+    topic.overview || !isBrowse
+      ? `<div class="card">
+      ${topic.overview ? `<p class="overview" style="margin-top: 0;">${linkify(topic.overview)}</p>` : `<p class="empty">No brief overview yet.</p>`}
+      ${isBrowse ? "" : `<div class="row"${topic.overview ? ` style="margin-top: 0.85rem;"` : ""}>
         <button type="button" class="btn" data-action="edit-topic-details" data-id="${topic.id}">Edit details</button>
       </div>`}
-    </div>
+    </div>`
+      : "";
+
+  document.getElementById("topic-content").innerHTML = `
+    ${overviewCard}
 
     <div class="card">
-      <div class="row" style="justify-content: space-between; margin-bottom: 0.75rem;">
-        <h2 style="margin: 0;">Activities</h2>
-        ${isBrowse ? "" : `<button type="button" class="btn btn--primary btn--small" data-action="new-activity">Add activity</button>`}
-      </div>
-      ${
-        isBrowse
-          ? ""
-          : `<form class="stack" data-form="add-activities-bulk" style="margin-bottom: 1rem;">
-        <input type="hidden" name="topicId" value="${topic.id}" />
-        <div class="field">
-          <label for="topic-bulk-activities">Add several activities</label>
-          <textarea id="topic-bulk-activities" name="titles" placeholder="One activity title per line" required></textarea>
-        </div>
-        <button type="submit" class="btn">Add activities</button>
-      </form>`
-      }
-      <div class="list list--activities">${activityList}</div>
+      <details class="category-block__fold section-fold" data-fold="activities:${topic.id}" ${collapsedUnits.has(`activities:${topic.id}`) ? "" : "open"}>
+        <summary class="category-block__summary">
+          <span class="category-block__chevron" aria-hidden="true"></span>
+          <span class="category-block__label">
+            <span class="category-block__name">Activities</span>
+            <span class="category-block__meta">${activities.length} activit${activities.length === 1 ? "y" : "ies"}</span>
+          </span>
+        </summary>
+        <div class="list list--activities">${activityList}</div>
+        ${isBrowse ? "" : `<div class="section-fold__actions section-fold__actions--end">
+          ${iconButtonHtml({ action: "new-activity", icon: "add", label: "Add activity", modifier: "icon-btn--primary" })}
+        </div>`}
+      </details>
     </div>
-
-    ${
-      isBrowse && !topic.notesFileId
-        ? ""
-        : `<div class="card">
-      <h2>Student notes</h2>
-      ${notesCard}
-    </div>`
-    }
-
-    ${
-      isBrowse && !papers.length
-        ? ""
-        : `<div class="card">
-      <div class="row" style="justify-content: space-between; margin-bottom: 0.75rem;">
-        <h2 style="margin: 0;">Sample questions</h2>
-        <div class="row">
-          ${mcqPapersForTopic(topic.id).length ? `<button type="button" class="btn btn--small" data-action="start-practice">Practice</button>` : ""}
-          ${isBrowse ? "" : `<button type="button" class="btn btn--primary btn--small" data-action="new-question">Add question</button>`}
-        </div>
-      </div>
-      <div class="list">${papers.length ? papers.map(pastPaperRow).join("") : `<p class="empty">${isBrowse ? "No questions yet." : "Add multiple-choice questions (A to D) to practise with the class. Tick one correct answer, or two or more for multi-select."}</p>`}</div>
-    </div>`
-    }
 
     ${
       isBrowse && !videos.length
@@ -2071,6 +2196,36 @@ function renderTopic() {
       </form>`
       }
       <div class="list">${videos.length ? videos.map(videoRow).join("") : `<p class="empty">Add video links to use in class or for revision.</p>`}</div>
+    </div>`
+    }
+
+    ${
+      isBrowse && !papers.length
+        ? ""
+        : `<div class="card">
+      <details class="category-block__fold section-fold" data-fold="questions:${topic.id}" ${collapsedUnits.has(`questions:${topic.id}`) ? "" : "open"}>
+        <summary class="category-block__summary">
+          <span class="category-block__chevron" aria-hidden="true"></span>
+          <span class="category-block__label">
+            <span class="category-block__name">Practice questions</span>
+            <span class="category-block__meta">${papers.length} question${papers.length === 1 ? "" : "s"}</span>
+          </span>
+        </summary>
+        <div class="section-fold__actions">
+          ${mcqPapersForTopic(topic.id).length ? iconButtonHtml({ action: "start-practice", icon: "practice", label: "Practice" }) : ""}
+          ${isBrowse ? "" : `<button type="button" class="btn btn--primary btn--small" data-action="new-question">Add question</button>`}
+        </div>
+        <div class="list">${papers.length ? papers.map(pastPaperRow).join("") : `<p class="empty">${isBrowse ? "No questions yet." : "Add multiple-choice questions (A to D) to practise with the class. Tick one correct answer, or two or more for multi-select."}</p>`}</div>
+      </details>
+    </div>`
+    }
+
+    ${
+      isBrowse && !topic.notesFileId
+        ? ""
+        : `<div class="card">
+      <h2>Student notes</h2>
+      ${notesCard}
     </div>`
     }
 
@@ -2543,7 +2698,9 @@ function openEdit({ title, fields, onSave }) {
       const datalist = field.options
         ? `<datalist id="${escapeHtml(field.listId)}">${field.options}</datalist>`
         : "";
-      return `<div class="field">${label}<input id="edit-field-${index}" name="${escapeHtml(field.name)}" type="text" value="${escapeHtml(field.value ?? "")}" placeholder="${escapeHtml(field.placeholder ?? "")}" ${list} ${field.required ? "required" : ""} />${datalist}</div>`;
+      const inputType = field.type === "number" ? "number" : "text";
+      const numberAttrs = inputType === "number" ? `min="${field.min ?? 1}" step="1"` : "";
+      return `<div class="field">${label}<input id="edit-field-${index}" name="${escapeHtml(field.name)}" type="${inputType}" value="${escapeHtml(String(field.value ?? ""))}" placeholder="${escapeHtml(field.placeholder ?? "")}" ${numberAttrs} ${list} ${field.required ? "required" : ""} />${datalist}</div>`;
     })
     .join("");
   document.getElementById("edit-dialog").showModal();
@@ -2597,6 +2754,18 @@ async function saveNotesPdf(file) {
   if (topic.notesFileId) await deleteFile(topic.notesFileId);
   topic.notesFileId = stored.id;
   topic.notesFileName = stored.name;
+  saveState();
+  render();
+}
+
+async function saveJournalPdf(file) {
+  const cls = currentClass();
+  if (!cls || !file) return;
+  const stored = await storePdf(file);
+  if (!stored) return;
+  if (cls.journalFileId) await deleteFile(cls.journalFileId);
+  cls.journalFileId = stored.id;
+  cls.journalFileName = stored.name;
   saveState();
   render();
 }
@@ -2790,6 +2959,17 @@ function handleAction(action, button) {
       render();
     }, "Remove");
   }
+  if (action === "remove-journal") {
+    const cls = currentClass();
+    confirmDelete("Remove this subject's journal PDF?", async () => {
+      if (!cls) return;
+      await deleteFile(cls.journalFileId);
+      cls.journalFileId = null;
+      cls.journalFileName = "";
+      saveState();
+      render();
+    }, "Remove");
+  }
   if (action === "edit-topic-details") {
     const topic = topicById(id);
     openEdit({
@@ -2808,6 +2988,14 @@ function handleAction(action, button) {
           ],
         },
         {
+          name: "order",
+          label: "Sort order",
+          type: "number",
+          value: topic?.order ?? 1,
+          placeholder: "e.g. 1",
+          required: true,
+        },
+        {
           name: "overview",
           label: "Brief overview",
           value: topic?.overview ?? "",
@@ -2822,6 +3010,7 @@ function handleAction(action, button) {
         topic.name = name;
         topic.overview = (values.overview ?? "").trim();
         topic.categoryId = values.unitId || null;
+        topic.order = parseSortOrder(values.order, topic.order ?? 99);
         saveState();
         render();
       },
@@ -2971,6 +3160,8 @@ function handleAction(action, button) {
   }
   if (action === "delete-class") {
     confirmDelete("Delete this class, its students, topics, and lessons?", async () => {
+      const cls = classById(id);
+      if (cls?.journalFileId) await deleteFile(cls.journalFileId);
       const topics = state.topics.filter((topic) => topic.classId === id);
       await Promise.all(topics.map((topic) => removeTopicFiles(topic)));
       const topicIds = new Set(topics.map((topic) => topic.id));
@@ -3039,7 +3230,7 @@ async function handleForm(form) {
     const subject = String(data.get("subject") ?? "").trim();
     if (!grade || !subject) return;
     const order = state.classes.reduce((max, cls) => Math.max(max, cls.order ?? 0), 0) + 1;
-    state.classes.push({ id: uid(), grade, subject, order });
+    state.classes.push(normalizeClass({ id: uid(), grade, subject, order }));
     saveState();
     render();
     return;
@@ -3073,7 +3264,7 @@ async function handleForm(form) {
   if (formName === "add-topic") {
     const name = String(data.get("name") ?? "").trim();
     const unitId = String(data.get("unitId") ?? "").trim();
-    const topic = createTopic(name, unitId);
+    const topic = createTopic(name, unitId, data.get("order"));
     if (!topic) return;
     saveState();
     selectedTopicId = topic.id;
@@ -3086,7 +3277,11 @@ async function handleForm(form) {
     const unitId = String(data.get("unitId") ?? "").trim();
     const names = parseNameLines(data.get("names"));
     if (!unitId || !names.length || !currentClassId) return;
-    names.forEach((name) => createTopic(name, unitId));
+    let order = nextTopicOrder(unitId);
+    names.forEach((name) => {
+      const topic = createTopic(name, unitId, order);
+      if (topic) order += 1;
+    });
     saveState();
     render();
     return;
@@ -3156,6 +3351,18 @@ function importBackup(file) {
   reader.readAsText(file);
 }
 
+document.getElementById("app").addEventListener(
+  "toggle",
+  (event) => {
+    const details = event.target;
+    if (!(details instanceof HTMLDetailsElement) || !details.dataset.fold) return;
+    const key = details.dataset.fold;
+    if (details.open) collapsedUnits.delete(key);
+    else collapsedUnits.add(key);
+  },
+  true
+);
+
 document.getElementById("app").addEventListener("click", (event) => {
   const link = event.target.closest("a[href]");
   if (link && !link.closest("[data-action]")) {
@@ -3201,6 +3408,10 @@ document.getElementById("app").addEventListener("change", (event) => {
   }
   if (event.target.dataset.upload === "notes" && event.target.files?.[0]) {
     saveNotesPdf(event.target.files[0]);
+    event.target.value = "";
+  }
+  if (event.target.dataset.upload === "journal" && event.target.files?.[0]) {
+    saveJournalPdf(event.target.files[0]);
     event.target.value = "";
   }
   if (event.target.dataset.upload === "activity-image" && event.target.files?.length) {
