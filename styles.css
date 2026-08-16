@@ -683,14 +683,25 @@ label.icon-btn {
   gap: 0.7rem;
 }
 
+.grouping-choices__sizes {
+  display: grid;
+  gap: 0.7rem;
+}
+
 @media (min-width: 700px) {
   .grouping-choices,
   .home-grid {
     grid-template-columns: 1fr 1fr;
   }
 
-  .home-grid .nav-card--wide {
+  .home-grid .nav-card--wide,
+  .grouping-choices .nav-card--wide,
+  .grouping-choices__sizes {
     grid-column: 1 / -1;
+  }
+
+  .grouping-choices__sizes {
+    grid-template-columns: 1fr 1fr 1fr;
   }
 }
 

@@ -18,6 +18,7 @@ const ACTIVITY_TAGS = [
   { id: "individual", label: "Individual" },
   { id: "partner", label: "Partner" },
   { id: "group", label: "Group" },
+  { id: "class", label: "Class" },
   { id: "discussion", label: "Discussion" },
   { id: "research", label: "Research" },
   { id: "coding", label: "Coding" },
@@ -211,6 +212,7 @@ function tagIconSvg(id) {
       '<circle cx="8" cy="8" r="2.7"/><circle cx="16.2" cy="8" r="2.7"/><path d="M3.5 20c.8-3.3 2.6-5 4.6-5s3.8 1.7 4.6 5"/><path d="M11.3 20c.8-3.3 2.6-5 4.6-5s3.8 1.7 4.6 5"/>',
     group:
       '<circle cx="12" cy="6.8" r="2.4"/><circle cx="6.2" cy="9" r="2.15"/><circle cx="17.8" cy="9" r="2.15"/><path d="M8.2 20c.7-3 2.2-4.5 3.8-4.5s3.1 1.5 3.8 4.5"/><path d="M2.8 20c.7-2.8 2.1-4.2 3.6-4.2s2.8 1.3 3.5 3.4"/><path d="M14.1 19.2c.7-2.1 1.9-3.4 3.5-3.4s2.9 1.4 3.6 4.2"/>',
+    class: '<path d="M4 5.5h16v11H4z"/><path d="M8 20h8"/><path d="M12 16.5V20"/>',
     discussion:
       '<path d="M7.5 16.5 5 19.5V8.5A2.5 2.5 0 0 1 7.5 6h6A2.5 2.5 0 0 1 16 8.5v4A2.5 2.5 0 0 1 13.5 15H7.5z"/><path d="M16 10h.5A2.5 2.5 0 0 1 19 12.5V20l-2.2-2.5H14"/>',
     research:
@@ -1162,20 +1164,65 @@ function previousLesson(beforeLessonId = null) {
 }
 
 function randomGroups() {
+  return groupsByTable();
+}
+
+function groupsByTable() {
+  return dealIntoGroups(4);
+}
+
+function groupsBySize(size) {
+  const n = classStudents().length;
+  if (!n) return [[]];
+  const count = Math.max(1, Math.round(n / size));
+  return dealIntoGroups(count);
+}
+
+function dealIntoGroups(count) {
   const ids = shuffle(classStudents().map((student) => student.id));
-  const groups = [[], [], [], []];
+  const groups = Array.from({ length: Math.max(1, count) }, () => []);
   ids.forEach((id, index) => {
-    groups[index % 4].push(id);
+    groups[index % groups.length].push(id);
   });
   return groups.map(sortGroup);
 }
 
+function groupingKindOf(lesson) {
+  if (lesson?.groupingKind === "size-2" || lesson?.groupingKind === "size-3" || lesson?.groupingKind === "size-4" || lesson?.groupingKind === "table") {
+    return lesson.groupingKind;
+  }
+  const mode = lesson?.groupingMode;
+  if (mode === "size-2" || mode === "size-3" || mode === "size-4" || mode === "table") return mode;
+  return "table";
+}
+
+function groupingLabel(lesson) {
+  if (lesson.groupingMode === "previous") return "kept last groups";
+  const kind = groupingKindOf(lesson);
+  if (kind === "size-2") return "groups of 2";
+  if (kind === "size-3") return "groups of 3";
+  if (kind === "size-4") return "groups of 4";
+  return "tables";
+}
+
+function isTableGrouping(lesson) {
+  return groupingKindOf(lesson) === "table";
+}
+
+function makeGroups(kind) {
+  if (kind === "size-2") return groupsBySize(2);
+  if (kind === "size-3") return groupsBySize(3);
+  if (kind === "size-4") return groupsBySize(4);
+  return groupsByTable();
+}
+
 function groupsFromPrevious(previous) {
   const livingIds = new Set(classStudents().map((student) => student.id));
-  const groups = [[], [], [], []];
+  const source = Array.isArray(previous?.groups) && previous.groups.length ? previous.groups : [[], [], [], []];
+  const groups = source.map(() => []);
   const placed = new Set();
 
-  (previous?.groups ?? [[], [], [], []]).forEach((group, index) => {
+  source.forEach((group, index) => {
     (group ?? []).forEach((id) => {
       if (livingIds.has(id) && !placed.has(id)) {
         groups[index].push(id);
@@ -1815,13 +1862,27 @@ function renderStart() {
     </div>
     <div class="card">
       <h2>How should we group the class?</h2>
-      <p class="hint" style="margin-bottom: 0.8rem;">Students are split into Red, Blue, Green, and Yellow groups.</p>
+      <p class="hint" style="margin-bottom: 0.8rem;">Choose tables, or put students into groups of 2, 3, or 4.</p>
       <div class="grouping-choices">
-        <button type="button" class="nav-card nav-card--primary" data-action="start-lesson" data-mode="random" ${selectedTopicId ? "" : "disabled"}>
-          <span class="nav-card__label">Group randomly</span>
-          <span class="nav-card__desc">Shuffle everyone into four new groups.</span>
+        <button type="button" class="nav-card nav-card--primary nav-card--wide" data-action="start-lesson" data-mode="table" ${selectedTopicId ? "" : "disabled"}>
+          <span class="nav-card__label">By table</span>
+          <span class="nav-card__desc">Shuffle everyone onto Red, Green, Yellow, and Blue tables.</span>
         </button>
-        <button type="button" class="nav-card" data-action="start-lesson" data-mode="previous" ${selectedTopicId && last ? "" : "disabled"}>
+        <div class="grouping-choices__sizes">
+          <button type="button" class="nav-card" data-action="start-lesson" data-mode="size-2" ${selectedTopicId ? "" : "disabled"}>
+            <span class="nav-card__label">Groups of 2</span>
+            <span class="nav-card__desc">Pair students up.</span>
+          </button>
+          <button type="button" class="nav-card" data-action="start-lesson" data-mode="size-3" ${selectedTopicId ? "" : "disabled"}>
+            <span class="nav-card__label">Groups of 3</span>
+            <span class="nav-card__desc">Put students in threes.</span>
+          </button>
+          <button type="button" class="nav-card" data-action="start-lesson" data-mode="size-4" ${selectedTopicId ? "" : "disabled"}>
+            <span class="nav-card__label">Groups of 4</span>
+            <span class="nav-card__desc">Put students in fours.</span>
+          </button>
+        </div>
+        <button type="button" class="nav-card nav-card--wide" data-action="start-lesson" data-mode="previous" ${selectedTopicId && last ? "" : "disabled"}>
           <span class="nav-card__label">Same as last lesson</span>
           <span class="nav-card__desc">${last ? `Keep groups from ${escapeHtml(lastTopic?.name ?? "the last lesson")} (${formatShortDate(last.date)}). New students join the smallest groups.` : "You’ll be able to use this after your first lesson."}</span>
         </button>
@@ -1863,12 +1924,16 @@ function renderLesson() {
     : `<p class="empty">No activities on this topic yet.</p>
        <button type="button" class="btn btn--primary" data-action="open-topic" data-id="${lesson.topicId}">Add activities</button>`;
 
-  const groups = GROUP_META.map((meta, index) => {
-    const names = (lesson.groups[index] ?? [])
+  const tableMode = isTableGrouping(lesson);
+  const groups = (lesson.groups ?? []).map((ids, index) => {
+    const names = (ids ?? [])
       .map((id) => state.students.find((student) => student.id === id))
       .filter(Boolean);
-    return `<article class="group group--${meta.id}">
-      <div class="group__head">${meta.label} · ${names.length}</div>
+    const color = GROUP_META[index % GROUP_META.length];
+    const label = tableMode && GROUP_META[index] ? GROUP_META[index].label : `Group ${index + 1}`;
+    const colorId = tableMode && GROUP_META[index] ? GROUP_META[index].id : color.id;
+    return `<article class="group group--${colorId}">
+      <div class="group__head">${escapeHtml(label)} · ${names.length}</div>
       <ul class="group__list">
         ${names.length ? names.map((student) => `<li>${escapeHtml(student.name)}</li>`).join("") : `<li class="empty">No students</li>`}
       </ul>
@@ -1895,7 +1960,11 @@ function renderLesson() {
         <div class="row" style="justify-content: space-between; margin-bottom: 0.75rem;">
           <h2 style="margin: 0;">Groups</h2>
           <div class="row">
-            <button type="button" class="btn btn--small" data-action="regroup" data-mode="random">Shuffle</button>
+            <button type="button" class="btn btn--small" data-action="regroup" data-mode="shuffle">Shuffle</button>
+            <button type="button" class="btn btn--small" data-action="regroup" data-mode="table">Tables</button>
+            <button type="button" class="btn btn--small" data-action="regroup" data-mode="size-2">2s</button>
+            <button type="button" class="btn btn--small" data-action="regroup" data-mode="size-3">3s</button>
+            <button type="button" class="btn btn--small" data-action="regroup" data-mode="size-4">4s</button>
             <button type="button" class="btn btn--small" data-action="regroup" data-mode="previous" ${previousLesson(lesson.id) ? "" : "disabled"}>Last lesson</button>
           </div>
         </div>
@@ -2685,7 +2754,7 @@ function renderHistory() {
           const total = activitiesForTopic(lesson.topicId).length;
           return `<button type="button" class="nav-card history-item" data-action="open-lesson" data-id="${lesson.id}">
             <span class="nav-card__label">${escapeHtml(topic?.name ?? "Deleted topic")}</span>
-            <span class="nav-card__desc">${formatShortDate(lesson.date)} · ${lesson.completedActivityIds.length} of ${total} activities · ${lesson.groupingMode === "previous" ? "kept last groups" : "random groups"}</span>
+            <span class="nav-card__desc">${formatShortDate(lesson.date)} · ${lesson.completedActivityIds.length} of ${total} activities · ${groupingLabel(lesson)}</span>
           </button>`;
         })
         .join("")
@@ -2723,7 +2792,8 @@ function addStudent(name) {
 function startLesson(mode) {
   if (!selectedTopicId || !currentClassId) return;
   const last = previousLesson();
-  const groups = mode === "previous" && last ? groupsFromPrevious(last) : randomGroups();
+  const kind = mode === "previous" && last ? groupingKindOf(last) : mode === "random" ? "table" : mode;
+  const groups = mode === "previous" && last ? groupsFromPrevious(last) : makeGroups(kind);
   const lesson = {
     id: uid(),
     classId: currentClassId,
@@ -2732,7 +2802,8 @@ function startLesson(mode) {
     topicId: selectedTopicId,
     completedActivityIds: [],
     groups,
-    groupingMode: mode === "previous" && last ? "previous" : "random",
+    groupingMode: mode === "previous" && last ? "previous" : kind,
+    groupingKind: kind === "previous" ? "table" : kind,
   };
   state.lessons.push(lesson);
   saveState();
@@ -2744,8 +2815,16 @@ function regroupLesson(mode) {
   const lesson = lessonById(openLessonId);
   if (!lesson) return;
   const last = previousLesson(lesson.id);
-  lesson.groups = mode === "previous" && last ? groupsFromPrevious(last) : randomGroups();
-  lesson.groupingMode = mode === "previous" && last ? "previous" : "random";
+  if (mode === "previous" && last) {
+    lesson.groups = groupsFromPrevious(last);
+    lesson.groupingMode = "previous";
+    lesson.groupingKind = groupingKindOf(last);
+  } else {
+    const kind = mode === "shuffle" || mode === "random" ? groupingKindOf(lesson) : mode;
+    lesson.groups = makeGroups(kind);
+    lesson.groupingMode = kind;
+    lesson.groupingKind = kind;
+  }
   saveState();
   render();
 }
