@@ -260,14 +260,16 @@ function iconSvg(name) {
     upload:
       '<path d="M12 16V5"/><path d="m8 9 4-4 4 4"/><path d="M5 19h14"/>',
     view: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+    up: '<path d="m6 14 6-6 6 6"/>',
+    down: '<path d="m6 10 6 6 6-6"/>',
   }[name];
   if (!inner) return "";
   return `<svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
 }
 
-function iconButtonHtml({ action, icon, label, id = "", extra = "", modifier = "" }) {
+function iconButtonHtml({ action, icon, label, id = "", extra = "", modifier = "", disabled = false }) {
   const idAttr = id ? `data-id="${id}"` : "";
-  return `<button type="button" class="icon-btn${modifier ? ` ${modifier}` : ""}" data-action="${action}" ${idAttr} ${extra} aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">${iconSvg(icon)}</button>`;
+  return `<button type="button" class="icon-btn${modifier ? ` ${modifier}` : ""}" data-action="${action}" ${idAttr} ${extra} aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}" ${disabled ? "disabled" : ""}>${iconSvg(icon)}</button>`;
 }
 
 function iconFileLabelHtml({ upload, icon, label, modifier = "", extra = "" }) {
@@ -996,6 +998,28 @@ function nextTopicOrder(unitId) {
 
 function nextClassOrder() {
   return state.classes.reduce((max, cls) => Math.max(max, cls.order ?? 0), 0) + 1;
+}
+
+function topicsInSameUnit(topic) {
+  return sortedTopics(
+    classTopics().filter((item) => (item.categoryId || "") === (topic.categoryId || ""))
+  );
+}
+
+function moveTopicInUnit(topicId, direction) {
+  const topic = topicById(topicId);
+  if (!topic) return;
+  const siblings = topicsInSameUnit(topic);
+  const index = siblings.findIndex((item) => item.id === topicId);
+  const next = index + direction;
+  if (index < 0 || next < 0 || next >= siblings.length) return;
+  const reordered = [...siblings];
+  [reordered[index], reordered[next]] = [reordered[next], reordered[index]];
+  reordered.forEach((item, order) => {
+    item.order = order + 1;
+  });
+  saveState();
+  render();
 }
 
 function parseSortOrder(value, fallback) {
@@ -2007,16 +2031,21 @@ function topicListItem(topic) {
     videosForTopic(topic.id).length ? `${videosForTopic(topic.id).length} video${videosForTopic(topic.id).length === 1 ? "" : "s"}` : null,
     pastPapersForTopic(topic.id).length ? `${pastPapersForTopic(topic.id).length} question${pastPapersForTopic(topic.id).length === 1 ? "" : "s"}` : null,
   ].filter(Boolean);
+  const siblings = isBrowse ? [] : topicsInSameUnit(topic);
+  const index = siblings.findIndex((item) => item.id === topic.id);
   return `<div class="list-item">
     <button type="button" class="list-item__main btn--ghost" data-action="open-topic" data-id="${topic.id}" style="border: 0; padding: 0; min-height: 0; background: transparent;">
       <div class="list-item__title list-item__title--large">${escapeHtml(topic.name)}</div>
-      <div class="list-item__meta">${count} activit${count === 1 ? "y" : "ies"}${extras.length ? ` · ${extras.join(" · ")}` : ""}</div>
+      <div class="list-item__meta">${isBrowse ? "" : `Order ${index + 1} · `}${count} activit${count === 1 ? "y" : "ies"}${extras.length ? ` · ${extras.join(" · ")}` : ""}</div>
     </button>
     ${
       isBrowse
         ? ""
         : `<div class="list-item__actions">
-      <button type="button" class="btn btn--small" data-action="delete-topic" data-id="${topic.id}">Delete</button>
+      ${iconButtonHtml({ action: "move-topic", icon: "up", label: "Move up", id: topic.id, extra: `data-dir="up"`, disabled: index <= 0 })}
+      ${iconButtonHtml({ action: "move-topic", icon: "down", label: "Move down", id: topic.id, extra: `data-dir="down"`, disabled: index < 0 || index >= siblings.length - 1 })}
+      ${iconButtonHtml({ action: "edit-topic-details", icon: "edit", label: "Edit", id: topic.id })}
+      ${iconButtonHtml({ action: "delete-topic", icon: "trash", label: "Delete", id: topic.id, modifier: "icon-btn--danger" })}
     </div>`
     }
   </div>`;
@@ -3153,6 +3182,9 @@ function handleAction(action, button) {
       saveState();
       render();
     }, "Remove");
+  }
+  if (action === "move-topic") {
+    moveTopicInUnit(id, button.dataset.dir === "down" ? 1 : -1);
   }
   if (action === "edit-topic-details") {
     const topic = topicById(id);

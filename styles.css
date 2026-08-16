@@ -93,7 +93,7 @@ p {
 
 .brand-header h1 {
   margin: 0.15rem 0 0.35rem;
-  font-size: 2.6rem;
+  font-size: clamp(1.85rem, 5.5vw, 2.6rem);
 }
 
 .brand-header__date {
@@ -491,9 +491,16 @@ textarea {
   cursor: pointer;
 }
 
-.icon-btn:hover {
+.icon-btn:hover:not(:disabled) {
   border-color: #d4c6a6;
   background: var(--gold-soft);
+}
+
+.icon-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+  background: #fff;
+  border-color: var(--line);
 }
 
 .icon-btn--danger {
