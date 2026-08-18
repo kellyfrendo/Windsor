@@ -24,12 +24,15 @@ const ACTIVITY_TAGS = [
   { id: "coding", label: "Coding" },
 ];
 
-const WEEKDAYS = [
-  { id: 1, name: "Monday", short: "Mon" },
-  { id: 2, name: "Tuesday", short: "Tue" },
-  { id: 3, name: "Wednesday", short: "Wed" },
-  { id: 4, name: "Thursday", short: "Thu" },
-  { id: 5, name: "Friday", short: "Fri" },
+const CYCLE_LENGTH = 10;
+const CYCLE_DAYS = Array.from({ length: CYCLE_LENGTH }, (_, index) => ({
+  id: index + 1,
+  name: `Day ${index + 1}`,
+  short: String(index + 1),
+}));
+const CYCLE_WEEKS = [
+  { id: "blue", name: "Blue Week", days: [1, 2, 3, 4, 5] },
+  { id: "gold", name: "Gold Week", days: [6, 7, 8, 9, 10] },
 ];
 
 const DEFAULT_CLASSES = [
@@ -61,6 +64,7 @@ const defaultState = () => ({
   videos: [],
   pastPapers: [],
   lessons: [],
+  cycleAnchor: null,
 });
 
 let state = defaultState();
@@ -326,6 +330,15 @@ function blankActivity(topicId) {
   };
 }
 
+function normalizeCycleAnchor(value) {
+  if (!value || typeof value !== "object") return null;
+  const date = String(value.date || "");
+  const day = Number(value.day);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  if (!Number.isInteger(day) || day < 1 || day > CYCLE_LENGTH) return null;
+  return { date, day };
+}
+
 function normalizePastPaper(paper) {
   const options = paper?.options && typeof paper.options === "object" ? paper.options : {};
   let correct = [];
@@ -492,6 +505,7 @@ function normalizeState(parsed) {
     videos: Array.isArray(parsed.videos) ? parsed.videos : [],
     pastPapers: (Array.isArray(parsed.pastPapers) ? parsed.pastPapers : []).map(normalizePastPaper),
     lessons,
+    cycleAnchor: normalizeCycleAnchor(parsed.cycleAnchor),
   };
 }
 
@@ -798,12 +812,74 @@ async function migrateLocalFilesToApi() {
   }
 }
 
-function todayKey() {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, "0");
-  const d = String(now.getDate()).padStart(2, "0");
+function dateKeyFrom(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
+}
+
+function todayKey() {
+  return dateKeyFrom(new Date());
+}
+
+function parseDateKey(key) {
+  const [y, m, d] = String(key).split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function startOfDay(date) {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
+
+function isSchoolDay(date = new Date()) {
+  const day = date.getDay();
+  return day >= 1 && day <= 5;
+}
+
+function nextSchoolDate(from = new Date()) {
+  const next = startOfDay(from);
+  do {
+    next.setDate(next.getDate() + 1);
+  } while (!isSchoolDay(next));
+  return next;
+}
+
+function schoolDaysFrom(start, end) {
+  const from = startOfDay(start);
+  const to = startOfDay(end);
+  if (from.getTime() === to.getTime()) return 0;
+  const dir = to > from ? 1 : -1;
+  const cursor = new Date(from);
+  let count = 0;
+  while (cursor.getTime() !== to.getTime()) {
+    cursor.setDate(cursor.getDate() + dir);
+    if (isSchoolDay(cursor)) count += dir;
+  }
+  return count;
+}
+
+function cycleDayForDate(date = new Date()) {
+  if (!isSchoolDay(date)) return null;
+  const anchor = state.cycleAnchor;
+  if (!anchor) {
+    return date.getDay();
+  }
+  const elapsed = schoolDaysFrom(parseDateKey(anchor.date), date);
+  return ((((anchor.day - 1 + elapsed) % CYCLE_LENGTH) + CYCLE_LENGTH) % CYCLE_LENGTH) + 1;
+}
+
+function todayCycleDay() {
+  return cycleDayForDate(new Date());
+}
+
+function setCycleDay(day) {
+  const n = Math.min(CYCLE_LENGTH, Math.max(1, Number(day) || 1));
+  const target = isSchoolDay() ? new Date() : nextSchoolDate();
+  state.cycleAnchor = { date: dateKeyFrom(startOfDay(target)), day: n };
+  timetableDay = n;
 }
 
 function formatLongDate(date = new Date()) {
@@ -906,9 +982,47 @@ function slotFor(day, periodId) {
   return state.slots.find((slot) => slot.day === day && slot.periodId === periodId) ?? null;
 }
 
-function todayWeekday() {
-  const day = new Date().getDay();
-  return day >= 1 && day <= 5 ? day : null;
+function cycleWeekOf(day) {
+  return CYCLE_WEEKS.find((week) => week.days.includes(Number(day))) ?? null;
+}
+
+function cycleWeekName(day) {
+  return cycleWeekOf(day)?.name ?? "";
+}
+
+function cycleDayName(day) {
+  return CYCLE_DAYS.find((item) => item.id === day)?.name ?? "";
+}
+
+function cycleDayLabel(day) {
+  const name = cycleDayName(day);
+  const week = cycleWeekName(day);
+  if (!name) return "";
+  return week ? `${week} · ${name}` : name;
+}
+
+function cycleDayOptions(selectedId) {
+  return CYCLE_WEEKS.map((week) => {
+    const options = week.days
+      .map((id) => {
+        const item = CYCLE_DAYS.find((day) => day.id === id);
+        if (!item) return "";
+        return `<option value="${item.id}" ${item.id === selectedId ? "selected" : ""}>${escapeHtml(item.name)}</option>`;
+      })
+      .join("");
+    return `<optgroup label="${escapeHtml(week.name)}">${options}</optgroup>`;
+  }).join("");
+}
+
+function cycleTodayControlHtml() {
+  const today = todayCycleDay();
+  const selected = today ?? cycleDayForDate(nextSchoolDate()) ?? 1;
+  return `<div class="field cycle-today">
+    <label for="cycle-today">${today ? "Today is" : "Next school day is"}</label>
+    <select id="cycle-today" data-assign="cycle-day">
+      ${cycleDayOptions(selected)}
+    </select>
+  </div>`;
 }
 
 function periodTimeLabel(period) {
@@ -1559,31 +1673,36 @@ function renderHome() {
     return;
   }
   document.getElementById("home-date").textContent = formatLongDate();
-  const weekday = todayWeekday();
+  const cycleDay = todayCycleDay();
   const periods = sortedPeriods();
 
   let scheduleHtml;
   if (!state.classes.length) {
     scheduleHtml = `<div class="setup-card">
-      <strong>Set up your week</strong>
+      <strong>Set up your cycle</strong>
       <ol>
         <li>Add the subjects and grade levels you teach.</li>
-        <li>Enter your timetable.</li>
+        <li>Enter your 10-day timetable.</li>
         <li>Tap today’s class to start a lesson.</li>
       </ol>
     </div>`;
-  } else if (!weekday) {
-    scheduleHtml = `<div class="card"><p class="empty">No lessons are scheduled at the weekend. Open a class below if you need to plan.</p></div>`;
+  } else if (!cycleDay) {
+    const nextDay = cycleDayForDate(nextSchoolDate());
+    scheduleHtml = `<div class="card">
+      <p class="empty">No lessons are scheduled at the weekend. Open a class below if you need to plan.</p>
+      ${cycleTodayControlHtml()}
+      ${nextDay ? `<p class="hint">The next school day will be ${escapeHtml(cycleDayLabel(nextDay))}.</p>` : ""}
+    </div>`;
   } else if (!periods.length) {
     scheduleHtml = `<div class="setup-card">
       <strong>Add your timetable</strong>
-      <p>Once periods and classes are on the timetable, today’s lessons will appear here.</p>
+      <p>Once periods and classes are on the 10-day cycle, today’s lessons will appear here.</p>
     </div>`;
   } else {
-    const dayName = WEEKDAYS.find((day) => day.id === weekday)?.name ?? "Today";
+    const dayName = cycleDayLabel(cycleDay) || "Today";
     const rows = periods
       .map((period) => {
-        const slot = slotFor(weekday, period.id);
+        const slot = slotFor(cycleDay, period.id);
         const cls = slot ? classById(slot.classId) : null;
         const time = periodTimeLabel(period);
         const lesson = cls ? todaysLessonFor(cls.id) : null;
@@ -1606,7 +1725,8 @@ function renderHome() {
       })
       .join("");
     scheduleHtml = `<div class="card">
-      <h2>Today’s schedule</h2>
+      <h2>Today’s schedule · ${escapeHtml(dayName)}</h2>
+      ${cycleTodayControlHtml()}
       <div class="schedule">${rows}</div>
     </div>`;
   }
@@ -1636,7 +1756,7 @@ function renderHome() {
       </button>
       <button type="button" class="nav-card" data-action="go-timetable">
         <span class="nav-card__label">Timetable</span>
-        <span class="nav-card__desc">${periods.length ? `${periods.length} period${periods.length === 1 ? "" : "s"}` : "Set periods and weekly lessons"}</span>
+        <span class="nav-card__desc">${periods.length ? `${periods.length} period${periods.length === 1 ? "" : "s"}` : "Set periods and the 10-day cycle"}</span>
       </button>
       <button type="button" class="nav-card" data-action="go-settings">
         <span class="nav-card__label">Backup</span>
@@ -1755,7 +1875,7 @@ function renderClasses() {
 
 function renderTimetable() {
   const periods = sortedPeriods();
-  const day = timetableDay || todayWeekday() || 1;
+  const day = timetableDay || todayCycleDay() || cycleDayForDate(nextSchoolDate()) || 1;
   timetableDay = day;
 
   const periodList = periods.length
@@ -1775,10 +1895,19 @@ function renderTimetable() {
         .join("")
     : `<p class="empty">Add the periods in a school day, then assign a class to each one.</p>`;
 
-  const dayTabs = WEEKDAYS.map(
-    (item) =>
-      `<button type="button" class="btn day-tab ${item.id === day ? "is-selected" : ""}" data-action="select-timetable-day" data-id="${item.id}">${item.short}</button>`
-  ).join("");
+  const dayTabs = CYCLE_WEEKS.map((week) => {
+    const tabs = week.days
+      .map((id) => {
+        const item = CYCLE_DAYS.find((dayItem) => dayItem.id === id);
+        if (!item) return "";
+        return `<button type="button" class="btn day-tab day-tab--${week.id} ${item.id === day ? "is-selected" : ""}" data-action="select-timetable-day" data-id="${item.id}">${item.short}</button>`;
+      })
+      .join("");
+    return `<div class="cycle-week cycle-week--${week.id}">
+      <p class="cycle-week__label">${escapeHtml(week.name)}</p>
+      <div class="day-tabs">${tabs}</div>
+    </div>`;
+  }).join("");
 
   const classOptions = (selectedId) =>
     `<option value="">Free</option>` +
@@ -1789,7 +1918,7 @@ function renderTimetable() {
       )
       .join("");
 
-  const dayName = WEEKDAYS.find((item) => item.id === day)?.name ?? "";
+  const dayName = cycleDayLabel(day);
   const assignments = periods.length
     ? periods
         .map((period) => {
@@ -1835,9 +1964,10 @@ function renderTimetable() {
       <div class="list">${periodList}</div>
     </div>
     <div class="card">
-      <h2>Weekly lessons</h2>
-      <p class="hint" style="margin-bottom: 0.75rem;">Choose a day, then pick the class for each period.</p>
-      <div class="day-tabs">${dayTabs}</div>
+      <h2>${escapeHtml(dayName) || "10-day cycle"}</h2>
+      <p class="hint" style="margin-bottom: 0.75rem;">Blue Week is Days 1–5. Gold Week is Days 6–10. Weekends are skipped.</p>
+      ${cycleTodayControlHtml()}
+      ${dayTabs}
       ${assignments}
     </div>
   `;
@@ -3005,7 +3135,7 @@ function handleAction(action, button) {
   }
   if (action === "go-classes") showPage("classes");
   if (action === "go-timetable") {
-    timetableDay = todayWeekday() || 1;
+    timetableDay = todayCycleDay() || cycleDayForDate(nextSchoolDate()) || 1;
     showPage("timetable");
   }
   if (action === "select-timetable-day") {
@@ -3612,6 +3742,11 @@ document.getElementById("app").addEventListener("submit", (event) => {
 
 document.getElementById("app").addEventListener("change", (event) => {
   if (isBrowse) return;
+  if (event.target.dataset.assign === "cycle-day") {
+    setCycleDay(event.target.value);
+    saveState();
+    render();
+  }
   if (event.target.dataset.assign === "slot") {
     const day = Number(event.target.dataset.day);
     const periodId = event.target.dataset.periodId;

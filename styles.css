@@ -1117,17 +1117,60 @@ label.icon-btn {
   box-shadow: none;
 }
 
+.cycle-today {
+  margin-bottom: 0.85rem;
+}
+
+.cycle-today select {
+  max-width: 16rem;
+}
+
+.cycle-week {
+  margin-bottom: 0.7rem;
+}
+
+.cycle-week:last-of-type {
+  margin-bottom: 0.9rem;
+}
+
+.cycle-week__label {
+  margin: 0 0 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.cycle-week--blue .cycle-week__label {
+  color: var(--blue);
+}
+
+.cycle-week--gold .cycle-week__label {
+  color: #9a7b12;
+}
+
 .day-tabs {
   display: flex;
   flex-wrap: wrap;
   gap: 0.4rem;
-  margin-bottom: 0.9rem;
+}
+
+.day-tab {
+  min-width: 2.4rem;
 }
 
 .day-tab.is-selected {
-  background: var(--navy);
-  border-color: var(--navy);
   color: #fff;
+}
+
+.day-tab--blue.is-selected {
+  background: var(--blue);
+  border-color: var(--blue);
+}
+
+.day-tab--gold.is-selected {
+  background: #b8921f;
+  border-color: #b8921f;
 }
 
 .timetable-row {
