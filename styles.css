@@ -224,6 +224,7 @@ p {
 .home-grid {
   display: grid;
   gap: 0.9rem;
+  margin-bottom: 1rem;
 }
 
 .nav-card {
@@ -1078,6 +1079,18 @@ label.icon-btn {
 }
 
 .file-name {
+  font-weight: 650;
+}
+
+.schedule-heading {
+  margin-bottom: 0.2rem;
+}
+
+.schedule-day {
+  margin: 0 0 0.85rem;
+  color: var(--navy);
+  font-family: var(--display);
+  font-size: 1.05rem;
   font-weight: 650;
 }
 

@@ -1667,6 +1667,24 @@ function renderBrowseHome() {
   document.getElementById("home-content").innerHTML = list;
 }
 
+function allClassesCardHtml() {
+  if (!state.classes.length) {
+    return `<div class="card"><p class="empty">Add subjects and grade levels to see your classes here.</p></div>`;
+  }
+  return `<div class="card">
+    <h2>All classes</h2>
+    <div class="list">${sortedClasses()
+      .map((cls) => {
+        const lesson = todaysLessonFor(cls.id);
+        return `<button type="button" class="nav-card" data-action="open-class" data-id="${cls.id}">
+          <span class="nav-card__label">${escapeHtml(classLabel(cls))}</span>
+          <span class="nav-card__desc">${lesson ? "Lesson in progress today" : `${state.students.filter((student) => student.classId === cls.id).length} students`}</span>
+        </button>`;
+      })
+      .join("")}</div>
+  </div>`;
+}
+
 function renderHome() {
   if (isBrowse) {
     renderBrowseHome();
@@ -1681,22 +1699,23 @@ function renderHome() {
     scheduleHtml = `<div class="setup-card">
       <strong>Set up your cycle</strong>
       <ol>
-        <li>Add the subjects and grade levels you teach.</li>
+        <li>Open Settings to add the subjects and grade levels you teach.</li>
         <li>Enter your 10-day timetable.</li>
         <li>Tap today’s class to start a lesson.</li>
       </ol>
+      <button type="button" class="btn btn--primary" data-action="go-settings" style="margin-top: 0.75rem;">Open Settings</button>
     </div>`;
   } else if (!cycleDay) {
     const nextDay = cycleDayForDate(nextSchoolDate());
     scheduleHtml = `<div class="card">
-      <p class="empty">No lessons are scheduled at the weekend. Open a class below if you need to plan.</p>
-      ${cycleTodayControlHtml()}
+      <p class="empty">No lessons are scheduled at the weekend. Open a class from Settings if you need to plan.</p>
       ${nextDay ? `<p class="hint">The next school day will be ${escapeHtml(cycleDayLabel(nextDay))}.</p>` : ""}
     </div>`;
   } else if (!periods.length) {
     scheduleHtml = `<div class="setup-card">
       <strong>Add your timetable</strong>
       <p>Once periods and classes are on the 10-day cycle, today’s lessons will appear here.</p>
+      <button type="button" class="btn btn--primary" data-action="go-settings" style="margin-top: 0.75rem;">Open Settings</button>
     </div>`;
   } else {
     const dayName = cycleDayLabel(cycleDay) || "Today";
@@ -1704,17 +1723,9 @@ function renderHome() {
       .map((period) => {
         const slot = slotFor(cycleDay, period.id);
         const cls = slot ? classById(slot.classId) : null;
+        if (!cls) return "";
         const time = periodTimeLabel(period);
-        const lesson = cls ? todaysLessonFor(cls.id) : null;
-        if (!cls) {
-          return `<div class="nav-card schedule-slot is-free">
-            <span class="schedule-slot__when">${escapeHtml(period.name)}${time ? `<br>${escapeHtml(time)}` : ""}</span>
-            <span>
-              <span class="nav-card__label">Free</span>
-              <span class="nav-card__desc">${escapeHtml(dayName)}</span>
-            </span>
-          </div>`;
-        }
+        const lesson = todaysLessonFor(cls.id);
         return `<button type="button" class="nav-card schedule-slot ${isCurrentPeriod(period) ? "is-now" : ""}" data-action="open-class" data-id="${cls.id}">
           <span class="schedule-slot__when">${escapeHtml(period.name)}${time ? `<br>${escapeHtml(time)}` : ""}</span>
           <span>
@@ -1723,44 +1734,21 @@ function renderHome() {
           </span>
         </button>`;
       })
+      .filter(Boolean)
       .join("");
     scheduleHtml = `<div class="card">
-      <h2>Today’s schedule · ${escapeHtml(dayName)}</h2>
-      ${cycleTodayControlHtml()}
-      <div class="schedule">${rows}</div>
+      <h2 class="schedule-heading">Today’s Schedule</h2>
+      <p class="schedule-day">${escapeHtml(dayName)}</p>
+      ${rows ? `<div class="schedule">${rows}</div>` : `<p class="empty">No classes are scheduled for ${escapeHtml(dayName)}.</p>`}
     </div>`;
   }
 
-  const classList = state.classes.length
-    ? `<div class="card">
-        <h2>All classes</h2>
-        <div class="list">${sortedClasses()
-          .map((cls) => {
-            const lesson = todaysLessonFor(cls.id);
-            return `<button type="button" class="nav-card" data-action="open-class" data-id="${cls.id}">
-              <span class="nav-card__label">${escapeHtml(classLabel(cls))}</span>
-              <span class="nav-card__desc">${lesson ? "Lesson in progress today" : `${state.students.filter((student) => student.classId === cls.id).length} students`}</span>
-            </button>`;
-          })
-          .join("")}</div>
-      </div>`
-    : "";
-
   document.getElementById("home-content").innerHTML = `
     ${scheduleHtml}
-    ${classList}
     <div class="home-grid">
-      <button type="button" class="nav-card" data-action="go-classes">
-        <span class="nav-card__label">Subjects &amp; grades</span>
-        <span class="nav-card__desc">${state.classes.length ? `${state.classes.length} class${state.classes.length === 1 ? "" : "es"}` : "Add the classes you teach"}</span>
-      </button>
-      <button type="button" class="nav-card" data-action="go-timetable">
-        <span class="nav-card__label">Timetable</span>
-        <span class="nav-card__desc">${periods.length ? `${periods.length} period${periods.length === 1 ? "" : "s"}` : "Set periods and the 10-day cycle"}</span>
-      </button>
       <button type="button" class="nav-card" data-action="go-settings">
-        <span class="nav-card__label">Backup</span>
-        <span class="nav-card__desc">Export or restore your data.</span>
+        <span class="nav-card__label">Settings</span>
+        <span class="nav-card__desc">Cycle day, classes, timetable, and backup.</span>
       </button>
       <a class="nav-card" href="browse.html">
         <span class="nav-card__label">Browse view</span>
@@ -1966,7 +1954,6 @@ function renderTimetable() {
     <div class="card">
       <h2>${escapeHtml(dayName) || "10-day cycle"}</h2>
       <p class="hint" style="margin-bottom: 0.75rem;">Blue Week is Days 1–5. Gold Week is Days 6–10. Weekends are skipped.</p>
-      ${cycleTodayControlHtml()}
       ${dayTabs}
       ${assignments}
     </div>
@@ -2923,11 +2910,29 @@ function renderHistory() {
 }
 
 function renderSettings() {
+  const periods = sortedPeriods();
   const cloudNote = usingCloud()
     ? "Your class, topics, lessons, PDFs, and images are saved in the same cloud account as Leftovers, so they are still there when you open Windsor on another device."
     : "Your class, topics, and lessons are saved in this browser. PDFs stay on this device until you open the Netlify site, which stores everything in the cloud.";
   document.getElementById("settings-content").innerHTML = `
+    <div class="card">
+      <h2>Cycle day</h2>
+      <p class="hint" style="margin-bottom: 0.75rem;">Choose which day of Blue Week or Gold Week it is today. Weekends are skipped.</p>
+      ${cycleTodayControlHtml()}
+    </div>
+    ${allClassesCardHtml()}
+    <div class="home-grid">
+      <button type="button" class="nav-card" data-action="go-classes">
+        <span class="nav-card__label">Subjects &amp; grades</span>
+        <span class="nav-card__desc">${state.classes.length ? `${state.classes.length} class${state.classes.length === 1 ? "" : "es"}` : "Add the classes you teach"}</span>
+      </button>
+      <button type="button" class="nav-card" data-action="go-timetable">
+        <span class="nav-card__label">Timetable</span>
+        <span class="nav-card__desc">${periods.length ? `${periods.length} period${periods.length === 1 ? "" : "s"}` : "Set periods and the 10-day cycle"}</span>
+      </button>
+    </div>
     <div class="card stack">
+      <h2>Backup</h2>
       <p>${cloudNote}</p>
       <div class="row">
         <button type="button" class="btn btn--primary" data-action="export-data">Download backup</button>
