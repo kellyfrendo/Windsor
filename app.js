@@ -958,8 +958,12 @@ function sortedClasses() {
   });
 }
 
+function studentsForClass(classId) {
+  return state.students.filter((student) => student.classId === classId);
+}
+
 function classStudents() {
-  return state.students.filter((student) => student.classId === currentClassId);
+  return studentsForClass(currentClassId);
 }
 
 function classCategories() {
@@ -1678,7 +1682,7 @@ function allClassesCardHtml() {
         const lesson = todaysLessonFor(cls.id);
         return `<button type="button" class="nav-card" data-action="open-class" data-id="${cls.id}">
           <span class="nav-card__label">${escapeHtml(classLabel(cls))}</span>
-          <span class="nav-card__desc">${lesson ? "Lesson in progress today" : `${state.students.filter((student) => student.classId === cls.id).length} students`}</span>
+          <span class="nav-card__desc">${lesson ? "Lesson in progress today" : `${studentsForClass(cls.id).length} students`}</span>
         </button>`;
       })
       .join("")}</div>
@@ -1807,7 +1811,7 @@ function renderClass() {
       </button>
       <button type="button" class="nav-card" data-action="go-students">
         <span class="nav-card__label">Students</span>
-        <span class="nav-card__desc">${students.length} student${students.length === 1 ? "" : "s"} in this class</span>
+        <span class="nav-card__desc">${students.length} student${students.length === 1 ? "" : "s"} in this subject and grade</span>
       </button>
       <button type="button" class="nav-card" data-action="go-history">
         <span class="nav-card__label">Past lessons</span>
@@ -1820,20 +1824,34 @@ function renderClass() {
 function renderClasses() {
   const list = sortedClasses().length
     ? sortedClasses()
-        .map(
-          (cls) => `<div class="list-item">
-            <button type="button" class="list-item__main btn--ghost" data-action="open-class" data-id="${cls.id}" style="border: 0; padding: 0; min-height: 0; background: transparent;">
-              <div class="list-item__title">${escapeHtml(classLabel(cls))}</div>
-              <div class="list-item__meta">Order ${cls.order ?? 99} · ${state.students.filter((student) => student.classId === cls.id).length} students · ${state.topics.filter((topic) => topic.classId === cls.id).length} topics</div>
-            </button>
-            <div class="list-item__actions">
-              <button type="button" class="btn btn--small" data-action="edit-class" data-id="${cls.id}">Edit</button>
-              <button type="button" class="btn btn--small" data-action="delete-class" data-id="${cls.id}">Delete</button>
+        .map((cls) => {
+          const foldKey = `class-students:${cls.id}`;
+          const count = studentsForClass(cls.id).length;
+          return `<div class="card class-roster">
+            <div class="class-roster__header">
+              <div class="list-item__main">
+                <div class="list-item__title">${escapeHtml(classLabel(cls))}</div>
+                <div class="list-item__meta">Order ${cls.order ?? 99} · ${state.topics.filter((topic) => topic.classId === cls.id).length} topic${state.topics.filter((topic) => topic.classId === cls.id).length === 1 ? "" : "s"}</div>
+              </div>
+              <div class="list-item__actions">
+                <button type="button" class="btn btn--small" data-action="edit-class" data-id="${cls.id}">Edit</button>
+                <button type="button" class="btn btn--small" data-action="delete-class" data-id="${cls.id}">Delete</button>
+              </div>
             </div>
-          </div>`
-        )
+            <details class="category-block__fold class-roster__fold" data-fold="${escapeHtml(foldKey)}" ${foldOpenAttr(foldKey, count === 0)}>
+              <summary class="category-block__summary class-roster__summary">
+                <span class="category-block__chevron" aria-hidden="true"></span>
+                <span class="category-block__label">
+                  <span class="category-block__name">Students</span>
+                  <span class="category-block__meta">${count} student${count === 1 ? "" : "s"} in this subject and grade</span>
+                </span>
+              </summary>
+              <div class="class-roster__body">${studentEditorFieldsHtml(cls.id)}</div>
+            </details>
+          </div>`;
+        })
         .join("")
-    : `<p class="empty">Add each subject and grade level you teach, for example Year 7 Mathematics.</p>`;
+    : `<div class="card"><p class="empty">Add each subject and grade level you teach, for example Grade 6 STEM. Each one has its own set of students.</p></div>`;
 
   document.getElementById("classes-content").innerHTML = `
     <form class="card" data-form="add-class">
@@ -1850,14 +1868,11 @@ function renderClasses() {
           <label for="class-order">Sort order</label>
           <input id="class-order" name="order" type="number" min="1" step="1" placeholder="e.g. 1" />
         </div>
-        <p class="hint">Lower numbers appear first in class lists. Leave blank to add it at the end.</p>
+        <p class="hint">Each subject and grade has its own class list. Lower numbers appear first. Leave sort order blank to add it at the end.</p>
         <button type="submit" class="btn btn--primary">Add class</button>
       </div>
     </form>
-    <div class="card">
-      <h2>Your classes</h2>
-      <div class="list">${list}</div>
-    </div>
+    ${list}
   `;
 }
 
@@ -2847,26 +2862,66 @@ function renderPractice() {
   `;
 }
 
-function renderStudents() {
-  const students = [...classStudents()].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
-  const list = students.length
-    ? students
-        .map(
-          (student) => `<div class="list-item">
-            <div class="list-item__main">
-              <div class="list-item__title">${escapeHtml(student.name)}</div>
-            </div>
-            <div class="list-item__actions">
-              <button type="button" class="btn btn--small" data-action="edit-student" data-id="${student.id}">Rename</button>
-              <button type="button" class="btn btn--small" data-action="delete-student" data-id="${student.id}">Remove</button>
-            </div>
-          </div>`
-        )
-        .join("")
-    : `<p class="empty">Add your class list. Names can be added one at a time or several at once.</p>`;
+function studentListHtml(classId) {
+  const students = [...studentsForClass(classId)].sort((a, b) =>
+    a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+  );
+  if (!students.length) {
+    return `<p class="empty">Add the students who take this subject and grade.</p>`;
+  }
+  return `<div class="list">${students
+    .map(
+      (student) => `<div class="list-item">
+        <div class="list-item__main">
+          <div class="list-item__title">${escapeHtml(student.name)}</div>
+        </div>
+        <div class="list-item__actions">
+          <button type="button" class="btn btn--small" data-action="edit-student" data-id="${student.id}">Rename</button>
+          <button type="button" class="btn btn--small" data-action="delete-student" data-id="${student.id}">Remove</button>
+        </div>
+      </div>`
+    )
+    .join("")}</div>`;
+}
 
+function studentEditorFieldsHtml(classId) {
+  const suffix = String(classId || "none");
+  return `
+    <form class="stack" data-form="add-student" data-class-id="${escapeHtml(classId)}">
+      <div class="row">
+        <div class="field">
+          <label for="student-name-${escapeHtml(suffix)}">Student name</label>
+          <input id="student-name-${escapeHtml(suffix)}" name="name" type="text" placeholder="e.g. Maya Rolle" required />
+        </div>
+        <button type="submit" class="btn btn--primary" style="align-self: end;">Add</button>
+      </div>
+    </form>
+    <form class="stack" data-form="add-students-bulk" data-class-id="${escapeHtml(classId)}" style="margin-top: 0.85rem;">
+      <div class="field">
+        <label for="student-bulk-${escapeHtml(suffix)}">Add several names</label>
+        <textarea id="student-bulk-${escapeHtml(suffix)}" name="names" placeholder="One name per line"></textarea>
+      </div>
+      <div class="row" style="margin-top: 0.35rem;">
+        <button type="submit" class="btn btn--primary">Add names</button>
+      </div>
+    </form>
+    <div class="class-roster__list">${studentListHtml(classId)}</div>
+  `;
+}
+
+function renderStudents() {
+  const cls = currentClass();
+  if (!cls) {
+    currentPage = "classes";
+    renderClasses();
+    return;
+  }
+  const titleEl = document.getElementById("students-title");
+  if (titleEl) titleEl.textContent = classLabel(cls);
+  const count = studentsForClass(cls.id).length;
   document.getElementById("students-content").innerHTML = `
-    <form class="card" data-form="add-student">
+    <p class="hint" style="margin-bottom: 1rem;">This class list is only for ${escapeHtml(classLabel(cls))}. Other subjects and grades have their own students.</p>
+    <form class="card" data-form="add-student" data-class-id="${escapeHtml(cls.id)}">
       <div class="row">
         <div class="field">
           <label for="student-name">Student name</label>
@@ -2875,7 +2930,7 @@ function renderStudents() {
         <button type="submit" class="btn btn--primary" style="align-self: end;">Add</button>
       </div>
     </form>
-    <form class="card" data-form="add-students-bulk">
+    <form class="card" data-form="add-students-bulk" data-class-id="${escapeHtml(cls.id)}">
       <div class="field">
         <label for="student-bulk">Add several names</label>
         <textarea id="student-bulk" name="names" placeholder="One name per line"></textarea>
@@ -2885,8 +2940,8 @@ function renderStudents() {
       </div>
     </form>
     <div class="card">
-      <h2>Class list (${students.length})</h2>
-      <div class="list">${list}</div>
+      <h2>Class list (${count})</h2>
+      ${studentListHtml(cls.id)}
     </div>
   `;
 }
@@ -2923,8 +2978,8 @@ function renderSettings() {
     ${allClassesCardHtml()}
     <div class="home-grid">
       <button type="button" class="nav-card" data-action="go-classes">
-        <span class="nav-card__label">Subjects &amp; grades</span>
-        <span class="nav-card__desc">${state.classes.length ? `${state.classes.length} class${state.classes.length === 1 ? "" : "es"}` : "Add the classes you teach"}</span>
+        <span class="nav-card__label">Subjects, grades &amp; students</span>
+        <span class="nav-card__desc">${state.classes.length ? `${state.classes.length} class${state.classes.length === 1 ? "" : "es"}, each with its own class list` : "Add the classes you teach"}</span>
       </button>
       <button type="button" class="nav-card" data-action="go-timetable">
         <span class="nav-card__label">Timetable</span>
@@ -2943,12 +2998,12 @@ function renderSettings() {
   `;
 }
 
-function addStudent(name) {
+function addStudent(name, classId = currentClassId) {
   const trimmed = name.trim();
-  if (!trimmed || !currentClassId) return false;
-  const exists = classStudents().some((student) => student.name.toLowerCase() === trimmed.toLowerCase());
+  if (!trimmed || !classId) return false;
+  const exists = studentsForClass(classId).some((student) => student.name.toLowerCase() === trimmed.toLowerCase());
   if (exists) return false;
-  state.students.push({ id: uid(), classId: currentClassId, name: trimmed });
+  state.students.push({ id: uid(), classId, name: trimmed });
   saveState();
   return true;
 }
@@ -3684,15 +3739,16 @@ async function handleForm(form) {
   }
 
   if (formName === "add-student") {
-    addStudent(String(data.get("name") ?? ""));
+    addStudent(String(data.get("name") ?? ""), form.dataset.classId || currentClassId);
     render();
     return;
   }
 
   if (formName === "add-students-bulk") {
+    const classId = form.dataset.classId || currentClassId;
     String(data.get("names") ?? "")
       .split("\n")
-      .forEach((name) => addStudent(name));
+      .forEach((name) => addStudent(name, classId));
     render();
   }
 }

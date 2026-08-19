@@ -671,6 +671,30 @@ label.icon-btn {
   justify-content: flex-end;
 }
 
+.class-roster__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.65rem 1rem;
+}
+
+.class-roster__summary {
+  font-size: 1rem;
+  min-height: 2.2rem;
+  margin-top: 0.65rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid var(--line);
+}
+
+.class-roster__body {
+  padding: 0.75rem 0 0.1rem;
+}
+
+.class-roster__list {
+  margin-top: 0.85rem;
+}
+
 .topic-pick {
   display: grid;
   gap: 0.6rem;
