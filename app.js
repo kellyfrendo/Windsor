@@ -1734,7 +1734,7 @@ function renderHome() {
           <span class="schedule-slot__when">${escapeHtml(period.name)}${time ? `<br>${escapeHtml(time)}` : ""}</span>
           <span>
             <span class="nav-card__label">${escapeHtml(classLabel(cls))}</span>
-            <span class="nav-card__desc">${lesson ? `Lesson in progress · ${lesson.completedActivityIds.length} ticked off` : "Tap to open this class"}</span>
+            ${lesson ? `<span class="nav-card__desc">Lesson in progress · ${lesson.completedActivityIds.length} ticked off</span>` : ""}
           </span>
         </button>`;
       })
