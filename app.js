@@ -35,6 +35,14 @@ const CYCLE_WEEKS = [
   { id: "gold", name: "Gold Week", days: [6, 7, 8, 9, 10] },
 ];
 
+const QUICK_LINKS = [
+  { id: "omada", name: "Omada", href: "https://use1-omada-cloud.tplinkcloud.com/#/cloudAccessManager" },
+  { id: "classroom", name: "Google Classroom", href: "https://classroom.google.com" },
+  { id: "veracross", name: "Veracross", href: "https://portals.veracross.com/windsor/faculty" },
+  { id: "wheniwork", name: "When I Work", href: "https://appx.wheniwork.com/" },
+  { id: "gmail", name: "GMail", href: "https://mail.google.com/mail/u/1/#inbox" },
+];
+
 const DEFAULT_CLASSES = [
   { subject: "Computer Science", grade: "Grade 11/12", order: 1 },
   { subject: "STEM", grade: "Grade 6", order: 2 },
@@ -266,6 +274,14 @@ function iconSvg(name) {
     view: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
     up: '<path d="m6 14 6-6 6 6"/>',
     down: '<path d="m6 10 6 6 6-6"/>',
+    omada:
+      '<path d="M5 12.2a9.5 9.5 0 0 1 14 0"/><path d="M8.2 15.3a5.4 5.4 0 0 1 7.6 0"/><circle cx="12" cy="18.3" r="1.15" fill="currentColor" stroke="none"/>',
+    classroom: '<path d="M4 5.5h16v11H4z"/><path d="M8 20h8"/><path d="M12 16.5V20"/>',
+    veracross:
+      '<path d="m3 10 9-6 9 6"/><path d="M5 9.8V20h14V9.8"/><path d="M9.5 20v-6h5v6"/>',
+    wheniwork:
+      '<circle cx="12" cy="12" r="8"/><path d="M12 8v4.4l3 1.8"/>',
+    gmail: '<path d="M4 6.5h16v11H4z"/><path d="m4 7.5 8 6 8-6"/>',
   }[name];
   if (!inner) return "";
   return `<svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
@@ -1671,6 +1687,19 @@ function renderBrowseHome() {
   document.getElementById("home-content").innerHTML = list;
 }
 
+function quickLinksHtml() {
+  return `<div class="card">
+    <h2>Quick links</h2>
+    <div class="quick-links">${QUICK_LINKS.map(
+      (link) =>
+        `<a class="quick-link" href="${escapeHtml(link.href)}" target="_blank" rel="noopener noreferrer">
+          <span class="quick-link__icon">${iconSvg(link.id)}</span>
+          <span class="quick-link__label">${escapeHtml(link.name)}</span>
+        </a>`
+    ).join("")}</div>
+  </div>`;
+}
+
 function allClassesCardHtml() {
   if (!state.classes.length) {
     return `<div class="card"><p class="empty">Add subjects and grade levels to see your classes here.</p></div>`;
@@ -1749,6 +1778,7 @@ function renderHome() {
 
   document.getElementById("home-content").innerHTML = `
     ${scheduleHtml}
+    ${quickLinksHtml()}
     <div class="home-grid">
       <button type="button" class="nav-card" data-action="go-settings">
         <span class="nav-card__label">Settings</span>
