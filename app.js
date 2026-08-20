@@ -41,6 +41,10 @@ const QUICK_LINKS = [
   { id: "veracross", name: "Veracross", href: "https://portals.veracross.com/windsor/faculty" },
   { id: "wheniwork", name: "When I Work", href: "https://appx.wheniwork.com/" },
   { id: "gmail", name: "GMail", href: "https://mail.google.com/mail/u/1/#inbox" },
+  { id: "drive", name: "Google Drive", href: "https://drive.google.com/" },
+  { id: "gemini", name: "Gemini", href: "https://gemini.google.com/app" },
+  { id: "calendar", name: "Google Calendar", href: "https://calendar.google.com/calendar/u/1/r" },
+  { id: "gchat", name: "GChat", href: "https://chat.google.com/u/1/app/home" },
 ];
 
 const DEFAULT_CLASSES = [
@@ -282,6 +286,13 @@ function iconSvg(name) {
     wheniwork:
       '<circle cx="12" cy="12" r="8"/><path d="M12 8v4.4l3 1.8"/>',
     gmail: '<path d="M4 6.5h16v11H4z"/><path d="m4 7.5 8 6 8-6"/>',
+    drive: '<path d="M3.2 8.2h6.1l2.2 2.4H20.8V19.2H3.2z"/>',
+    gemini:
+      '<path d="M12 3.6 13.7 9.1 19.2 10.8 13.7 12.5 12 18 10.3 12.5 4.8 10.8 10.3 9.1z"/><path d="M18.4 15 19.1 17.2 21.3 18 19.1 18.8 18.4 21 17.7 18.8 15.5 18 17.7 17.2z"/>',
+    calendar:
+      '<path d="M5 6.5h14v13H5z"/><path d="M5 10.5h14"/><path d="M9 4.5v4"/><path d="M15 4.5v4"/>',
+    gchat:
+      '<path d="M6.5 16.2 4.5 19V8.2A2.2 2.2 0 0 1 6.7 6h8.6A2.2 2.2 0 0 1 17.5 8.2v5.2A2.2 2.2 0 0 1 15.3 15.6H6.5z"/><path d="M17.5 10.2h.3A2 2 0 0 1 19.8 12.2V19l-1.8-2"/>',
   }[name];
   if (!inner) return "";
   return `<svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
