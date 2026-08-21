@@ -825,7 +825,8 @@ label.icon-btn {
   min-height: 1.35rem;
 }
 
-.activity.is-done .activity__check {
+.activity.is-done .activity__check,
+.task.is-done .activity__check {
   background: var(--ok);
   border-color: var(--ok);
   color: #fff;
@@ -1098,6 +1099,107 @@ label.icon-btn {
   cursor: pointer;
 }
 
+.chip.is-selected {
+  background: var(--navy);
+  border-color: var(--navy);
+  color: #fff;
+}
+
+.chip--small {
+  padding: 0.28rem 0.55rem;
+  font-size: 0.78rem;
+  min-height: 2rem;
+}
+
+.task-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.task {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+}
+
+.task.is-done {
+  background: var(--ok-bg);
+  border-color: #c8e2d3;
+}
+
+.task__head {
+  display: flex;
+  gap: 0.7rem;
+  align-items: flex-start;
+  padding: 0.7rem 0.8rem;
+}
+
+.task__head .activity__check {
+  margin-top: 0.2rem;
+}
+
+.task__toggle {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 0.12rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.task__name {
+  font-family: var(--display);
+  font-size: 1.12rem;
+  font-weight: 650;
+}
+
+.task__meta {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.task__body {
+  padding: 0 0.85rem 0.9rem 2.85rem;
+}
+
+.roster-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.45rem 0.75rem;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.roster-row:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.roster-row__name {
+  font-weight: 650;
+}
+
+.roster-row__actions,
+.merit-stepper {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.merit-stepper__count {
+  min-width: 1.4rem;
+  text-align: center;
+  font-weight: 700;
+}
+
 .chip__meta {
   color: var(--muted);
   font-weight: 500;
@@ -1252,6 +1354,128 @@ label.icon-btn {
 .day-tab--gold.is-selected {
   background: #b8921f;
   border-color: #b8921f;
+}
+
+.class-cycle {
+  margin-bottom: 1rem;
+}
+
+.class-cycle:last-child {
+  margin-bottom: 0;
+}
+
+.class-cycle__days {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.4rem;
+}
+
+.class-day {
+  min-height: 6.2rem;
+  padding: 0.5rem 0.4rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.class-day.is-today {
+  border-width: 2px;
+}
+
+.class-day--blue.is-today {
+  border-color: var(--blue);
+  background: #eef4fb;
+}
+
+.class-day--gold.is-today {
+  border-color: #b8921f;
+  background: var(--gold-soft);
+}
+
+.class-day__head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin-bottom: 0.4rem;
+}
+
+.class-day__name {
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.class-day__badge {
+  display: inline-block;
+  margin-top: 0.45rem;
+  padding: 0.08rem 0.38rem;
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #fff;
+}
+
+.class-day--blue .class-day__badge {
+  background: var(--blue);
+}
+
+.class-day--gold .class-day__badge {
+  background: #b8921f;
+}
+
+.class-day__period {
+  appearance: none;
+  display: block;
+  width: 100%;
+  margin-top: 0.3rem;
+  padding: 0.28rem 0.32rem;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(27, 54, 93, 0.06);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.class-day__period:hover {
+  background: rgba(27, 54, 93, 0.14);
+}
+
+.class-day__period.is-now {
+  background: var(--navy);
+  color: #fff;
+}
+
+.class-day__period.is-now:hover {
+  background: var(--navy-deep);
+}
+
+.class-day__period-name {
+  display: block;
+  font-size: 0.74rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.class-day__period-time {
+  display: block;
+  margin-top: 0.08rem;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 500;
+}
+
+.class-day__period.is-now .class-day__period-time {
+  color: #d5deea;
+}
+
+.class-day__free {
+  color: var(--muted);
+  font-size: 0.9rem;
+  opacity: 0.45;
 }
 
 .timetable-row {

@@ -447,6 +447,33 @@ function normalizeClass(cls) {
   };
 }
 
+function normalizeLesson(lesson) {
+  const attendance =
+    lesson?.attendance && typeof lesson.attendance === "object" && !Array.isArray(lesson.attendance)
+      ? lesson.attendance
+      : {};
+  const merits = {};
+  if (lesson?.merits && typeof lesson.merits === "object" && !Array.isArray(lesson.merits)) {
+    Object.entries(lesson.merits).forEach(([id, value]) => {
+      const n = Number(value);
+      if (Number.isFinite(n) && n > 0) merits[id] = n;
+    });
+  }
+  const tasks = lesson?.completedTasks && typeof lesson.completedTasks === "object" ? lesson.completedTasks : {};
+  return {
+    ...lesson,
+    completedActivityIds: Array.isArray(lesson?.completedActivityIds) ? lesson.completedActivityIds : [],
+    groups: Array.isArray(lesson?.groups) ? lesson.groups : [],
+    attendance,
+    merits,
+    completedTasks: {
+      attendance: Boolean(tasks.attendance),
+      merits: Boolean(tasks.merits),
+      activities: Boolean(tasks.activities),
+    },
+  };
+}
+
 function sameClass(a, b) {
   return a.subject.toLowerCase() === b.subject.toLowerCase() && a.grade.toLowerCase() === b.grade.toLowerCase();
 }
@@ -531,7 +558,7 @@ function normalizeState(parsed) {
     activities: (Array.isArray(parsed.activities) ? parsed.activities : []).map(normalizeActivity),
     videos: Array.isArray(parsed.videos) ? parsed.videos : [],
     pastPapers: (Array.isArray(parsed.pastPapers) ? parsed.pastPapers : []).map(normalizePastPaper),
-    lessons,
+    lessons: lessons.map(normalizeLesson),
     cycleAnchor: normalizeCycleAnchor(parsed.cycleAnchor),
   };
 }
@@ -1011,6 +1038,58 @@ function sortedPeriods() {
 
 function slotFor(day, periodId) {
   return state.slots.find((slot) => slot.day === day && slot.periodId === periodId) ?? null;
+}
+
+function classMeetingsOnDay(classId, dayId) {
+  return sortedPeriods().filter((period) => slotFor(dayId, period.id)?.classId === classId);
+}
+
+function classCycleScheduleHtml(classId) {
+  const periods = sortedPeriods();
+  const today = todayCycleDay();
+  if (!periods.length) {
+    return `<div class="card">
+      <h2>Schedule</h2>
+      <p class="empty">Add periods and this class on the timetable in Settings to see Blue Week and Gold Week here.</p>
+    </div>`;
+  }
+  const hasMeetings = state.slots.some((slot) => slot.classId === classId);
+  const weeks = CYCLE_WEEKS.map((week) => {
+    const days = week.days
+      .map((dayId) => {
+        const isToday = today === dayId;
+        const meetings = classMeetingsOnDay(classId, dayId);
+        const items = meetings.length
+          ? meetings
+              .map((period) => {
+                const time = periodTimeLabel(period);
+                const now = isToday && isCurrentPeriod(period);
+                return `<button type="button" class="class-day__period${now ? " is-now" : ""}" data-action="go-start">
+                  <span class="class-day__period-name">${escapeHtml(period.name)}</span>
+                  ${time ? `<span class="class-day__period-time">${escapeHtml(time)}</span>` : ""}
+                </button>`;
+              })
+              .join("")
+          : `<p class="class-day__free">—</p>`;
+        return `<div class="class-day class-day--${week.id}${isToday ? " is-today" : ""}">
+          <div class="class-day__head">
+            <span class="class-day__name">${escapeHtml(cycleDayName(dayId))}</span>
+          </div>
+          ${items}
+          ${isToday ? `<span class="class-day__badge">Today</span>` : ""}
+        </div>`;
+      })
+      .join("");
+    return `<div class="class-cycle class-cycle--${week.id}">
+      <p class="cycle-week__label">${escapeHtml(week.name)}</p>
+      <div class="class-cycle__days">${days}</div>
+    </div>`;
+  }).join("");
+  return `<div class="card">
+    <h2 class="schedule-heading">Schedule</h2>
+    ${today ? `<p class="schedule-day">Today is ${escapeHtml(cycleDayLabel(today))}</p>` : `<p class="hint" style="margin-bottom: 0.85rem;">No school day today.</p>`}
+    ${hasMeetings ? weeks : `<p class="empty">This class is not on the timetable yet.</p>`}
+  </div>`;
 }
 
 function cycleWeekOf(day) {
@@ -1839,7 +1918,7 @@ function renderClass() {
 
   document.getElementById("class-content").innerHTML = `
     ${setup}
-    ${journalCardHtml(cls)}
+    ${classCycleScheduleHtml(cls.id)}
     <div class="home-grid">
       ${continueCard}
       ${today ? `<button type="button" class="nav-card" data-action="go-start">
@@ -1859,6 +1938,7 @@ function renderClass() {
         <span class="nav-card__desc">${classLessons().length} saved lesson${classLessons().length === 1 ? "" : "s"}</span>
       </button>
     </div>
+    ${journalCardHtml(cls)}
   `;
 }
 
@@ -2089,7 +2169,7 @@ function renderStart() {
 }
 
 function renderLesson() {
-  const lesson = lessonById(openLessonId);
+  const lesson = ensureLessonExtras(lessonById(openLessonId));
   if (!lesson) {
     showPage(currentClass() ? "class" : "home");
     return;
@@ -2098,6 +2178,7 @@ function renderLesson() {
   document.getElementById("lesson-title").textContent = topic?.name ?? "Lesson";
   const activities = activitiesForTopic(lesson.topicId);
   const done = lesson.completedActivityIds.length;
+  const roster = lessonRoster(lesson);
 
   const activityList = activities.length
     ? activities
@@ -2121,6 +2202,83 @@ function renderLesson() {
     : `<p class="empty">No activities on this topic yet.</p>
        <button type="button" class="btn btn--primary" data-action="open-topic" data-id="${lesson.topicId}">Add activities</button>`;
 
+  const attendanceCounts = roster.reduce(
+    (counts, student) => {
+      const status = lesson.attendance[student.id];
+      if (status === "present") counts.present += 1;
+      else if (status === "absent") counts.absent += 1;
+      else if (status === "late") counts.late += 1;
+      else counts.unmarked += 1;
+      return counts;
+    },
+    { present: 0, absent: 0, late: 0, unmarked: 0 }
+  );
+  const meritTotal = Object.values(lesson.merits).reduce((sum, value) => sum + (Number(value) || 0), 0);
+  const attendanceMeta = roster.length
+    ? `${attendanceCounts.present} present · ${attendanceCounts.absent} absent${attendanceCounts.late ? ` · ${attendanceCounts.late} late` : ""}${attendanceCounts.unmarked ? ` · ${attendanceCounts.unmarked} not marked` : ""}`
+    : "Add students first";
+  const meritsMeta = meritTotal ? `${meritTotal} merit${meritTotal === 1 ? "" : "s"} given` : "None given yet";
+  const activitiesMeta = `${done} of ${activities.length} ticked off`;
+
+  const attendanceBody = roster.length
+    ? `<div class="row" style="margin-bottom: 0.7rem;">
+        <button type="button" class="btn btn--small" data-action="mark-all-present">Mark all present</button>
+      </div>
+      <div class="stack">${roster
+        .map((student) => {
+          const status = lesson.attendance[student.id] || "";
+          return `<div class="roster-row">
+            <span class="roster-row__name">${escapeHtml(student.name)}</span>
+            <span class="roster-row__actions">
+              ${["present", "absent", "late"]
+                .map(
+                  (value) =>
+                    `<button type="button" class="chip chip--small ${status === value ? "is-selected" : ""}" data-action="set-attendance" data-id="${student.id}" data-mode="${value}">${value[0].toUpperCase()}${value.slice(1)}</button>`
+                )
+                .join("")}
+            </span>
+          </div>`;
+        })
+        .join("")}</div>`
+    : `<p class="empty">Add students for this subject and grade, then you can take attendance here.</p>`;
+
+  const meritsBody = roster.length
+    ? `<div class="stack">${roster
+        .map((student) => {
+          const count = Number(lesson.merits[student.id]) || 0;
+          return `<div class="roster-row">
+            <span class="roster-row__name">${escapeHtml(student.name)}</span>
+            <span class="merit-stepper">
+              <button type="button" class="btn btn--small" data-action="adjust-merit" data-id="${student.id}" data-mode="-1" ${count ? "" : "disabled"} aria-label="Remove a merit">−</button>
+              <span class="merit-stepper__count">${count}</span>
+              <button type="button" class="btn btn--small" data-action="adjust-merit" data-id="${student.id}" data-mode="1" aria-label="Give a merit">+</button>
+            </span>
+          </div>`;
+        })
+        .join("")}</div>`
+    : `<p class="empty">Add students for this subject and grade, then you can give merits here.</p>`;
+
+  const tasks = [
+    { id: "attendance", name: "Attendance", meta: attendanceMeta, body: attendanceBody, defaultOpen: true },
+    { id: "merits", name: "Merits", meta: meritsMeta, body: meritsBody, defaultOpen: false },
+    { id: "activities", name: "Activities", meta: activitiesMeta, body: `<div class="stack">${activityList}</div>`, defaultOpen: false },
+  ]
+    .map((task) => {
+      const key = `lesson-task:${lesson.id}:${task.id}`;
+      const isDone = Boolean(lesson.completedTasks[task.id]);
+      return `<div class="task ${isDone ? "is-done" : ""}">
+        <div class="task__head">
+          <button type="button" class="activity__check" data-action="toggle-task" data-id="${task.id}" aria-label="${isDone ? `Mark ${task.name} not done` : `Mark ${task.name} done`}">${isDone ? "✓" : ""}</button>
+          <button type="button" class="task__toggle" data-action="toggle-task-fold" data-id="${task.id}">
+            <span class="task__name">${escapeHtml(task.name)}</span>
+            <span class="task__meta">${escapeHtml(task.meta)}</span>
+          </button>
+        </div>
+        ${foldIsOpen(key, task.defaultOpen) ? `<div class="task__body">${task.body}</div>` : ""}
+      </div>`;
+    })
+    .join("");
+
   const tableMode = isTableGrouping(lesson);
   const groups = (lesson.groups ?? []).map((ids, index) => {
     const names = (ids ?? [])
@@ -2140,33 +2298,32 @@ function renderLesson() {
   const overview = topic?.overview
     ? `<p class="overview">${linkify(topic.overview)}</p>`
     : "";
+  const tasksDone = ["attendance", "merits", "activities"].filter((id) => lesson.completedTasks[id]).length;
 
   document.getElementById("lesson-content").innerHTML = `
-    <p class="progress">${formatShortDate(lesson.date)} · ${topic ? escapeHtml(categoryName(topic.categoryId)) : ""} · ${done} of ${activities.length} activities ticked off</p>
+    <p class="progress">${formatShortDate(lesson.date)} · ${topic ? escapeHtml(categoryName(topic.categoryId)) : ""} · ${tasksDone} of 3 tasks · ${done} of ${activities.length} activities ticked off</p>
     ${overview}
     <p class="row" style="margin-bottom: 1rem;">
       <button type="button" class="btn" data-action="open-topic" data-id="${lesson.topicId}">Topic materials</button>
       ${mcqPapersForTopic(lesson.topicId).length ? `<button type="button" class="btn btn--primary" data-action="start-practice">Practice questions</button>` : ""}
     </p>
-    <div class="lesson-layout">
-      <div class="card">
-        <h2>Activities</h2>
-        <div class="stack">${activityList}</div>
-      </div>
-      <div class="card">
-        <div class="row" style="justify-content: space-between; margin-bottom: 0.75rem;">
-          <h2 style="margin: 0;">Groups</h2>
-          <div class="row">
-            <button type="button" class="btn btn--small" data-action="regroup" data-mode="shuffle">Shuffle</button>
-            <button type="button" class="btn btn--small" data-action="regroup" data-mode="table">Tables</button>
-            <button type="button" class="btn btn--small" data-action="regroup" data-mode="size-2">2s</button>
-            <button type="button" class="btn btn--small" data-action="regroup" data-mode="size-3">3s</button>
-            <button type="button" class="btn btn--small" data-action="regroup" data-mode="size-4">4s</button>
-            <button type="button" class="btn btn--small" data-action="regroup" data-mode="previous" ${previousLesson(lesson.id) ? "" : "disabled"}>Last lesson</button>
-          </div>
+    <div class="card">
+      <h2>Task list</h2>
+      <div class="task-list">${tasks}</div>
+    </div>
+    <div class="card">
+      <div class="row" style="justify-content: space-between; margin-bottom: 0.75rem;">
+        <h2 style="margin: 0;">Groups</h2>
+        <div class="row">
+          <button type="button" class="btn btn--small" data-action="regroup" data-mode="shuffle">Shuffle</button>
+          <button type="button" class="btn btn--small" data-action="regroup" data-mode="table">Tables</button>
+          <button type="button" class="btn btn--small" data-action="regroup" data-mode="size-2">2s</button>
+          <button type="button" class="btn btn--small" data-action="regroup" data-mode="size-3">3s</button>
+          <button type="button" class="btn btn--small" data-action="regroup" data-mode="size-4">4s</button>
+          <button type="button" class="btn btn--small" data-action="regroup" data-mode="previous" ${previousLesson(lesson.id) ? "" : "disabled"}>Last lesson</button>
         </div>
-        <div class="groups">${groups}</div>
       </div>
+      <div class="groups">${groups}</div>
     </div>
   `;
 }
@@ -3064,6 +3221,9 @@ function startLesson(mode) {
     groups,
     groupingMode: mode === "previous" && last ? "previous" : kind,
     groupingKind: kind === "previous" ? "table" : kind,
+    attendance: {},
+    merits: {},
+    completedTasks: { attendance: false, merits: false, activities: false },
   };
   state.lessons.push(lesson);
   saveState();
@@ -3092,9 +3252,74 @@ function regroupLesson(mode) {
 function toggleActivity(activityId) {
   const lesson = lessonById(openLessonId);
   if (!lesson) return;
+  ensureLessonExtras(lesson);
   const index = lesson.completedActivityIds.indexOf(activityId);
   if (index >= 0) lesson.completedActivityIds.splice(index, 1);
   else lesson.completedActivityIds.push(activityId);
+  const activities = activitiesForTopic(lesson.topicId);
+  if (activities.length && activities.every((activity) => lesson.completedActivityIds.includes(activity.id))) {
+    lesson.completedTasks.activities = true;
+  }
+  saveState();
+  render();
+}
+
+function ensureLessonExtras(lesson) {
+  if (!lesson) return lesson;
+  if (!Array.isArray(lesson.completedActivityIds)) lesson.completedActivityIds = [];
+  if (!lesson.attendance || typeof lesson.attendance !== "object") lesson.attendance = {};
+  if (!lesson.merits || typeof lesson.merits !== "object") lesson.merits = {};
+  if (!lesson.completedTasks || typeof lesson.completedTasks !== "object") {
+    lesson.completedTasks = { attendance: false, merits: false, activities: false };
+  }
+  return lesson;
+}
+
+function lessonRoster(lesson) {
+  return [...state.students.filter((student) => student.classId === lesson.classId)].sort((a, b) =>
+    a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+  );
+}
+
+function toggleLessonTask(taskId) {
+  const lesson = ensureLessonExtras(lessonById(openLessonId));
+  if (!lesson || !["attendance", "merits", "activities"].includes(taskId)) return;
+  lesson.completedTasks[taskId] = !lesson.completedTasks[taskId];
+  saveState();
+  render();
+}
+
+function setLessonAttendance(studentId, status) {
+  const lesson = ensureLessonExtras(lessonById(openLessonId));
+  if (!lesson || !studentId) return;
+  if (lesson.attendance[studentId] === status) delete lesson.attendance[studentId];
+  else lesson.attendance[studentId] = status;
+  const roster = lessonRoster(lesson);
+  if (roster.length && roster.every((student) => lesson.attendance[student.id])) {
+    lesson.completedTasks.attendance = true;
+  }
+  saveState();
+  render();
+}
+
+function markAllPresent() {
+  const lesson = ensureLessonExtras(lessonById(openLessonId));
+  if (!lesson) return;
+  lessonRoster(lesson).forEach((student) => {
+    lesson.attendance[student.id] = "present";
+  });
+  lesson.completedTasks.attendance = true;
+  saveState();
+  render();
+}
+
+function adjustLessonMerit(studentId, delta) {
+  const lesson = ensureLessonExtras(lessonById(openLessonId));
+  if (!lesson || !studentId) return;
+  const next = Math.max(0, (Number(lesson.merits[studentId]) || 0) + Number(delta));
+  if (next) lesson.merits[studentId] = next;
+  else delete lesson.merits[studentId];
+  if (next > 0) lesson.completedTasks.merits = true;
   saveState();
   render();
 }
@@ -3389,6 +3614,15 @@ function handleAction(action, button) {
     showPage("topic");
   }
   if (action === "toggle-activity") toggleActivity(id);
+  if (action === "toggle-task") toggleLessonTask(id);
+  if (action === "toggle-task-fold") {
+    const key = `lesson-task:${openLessonId}:${id}`;
+    foldOpenState.set(key, !foldIsOpen(key, id === "attendance"));
+    render();
+  }
+  if (action === "set-attendance") setLessonAttendance(id, mode);
+  if (action === "mark-all-present") markAllPresent();
+  if (action === "adjust-merit") adjustLessonMerit(id, Number(mode));
   if (action === "regroup") regroupLesson(mode);
   if (action === "open-pdf") openPdf(button.dataset.fileId, button.dataset.title);
   if (action === "remove-notes") {
