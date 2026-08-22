@@ -1,9 +1,13 @@
 const STORAGE_KEY = "windsor-v1";
 const MAX_TOPIC_NOTES = 3;
+const MAX_CLASS_RESOURCES = 20;
 const FILE_DB = "windsor-files";
 const FILE_STORE = "files";
 const MAX_PDF_BYTES = 25 * 1024 * 1024;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const MAX_RESOURCE_BYTES = 40 * 1024 * 1024;
+const RESOURCE_ACCEPT =
+  ".pdf,.ppt,.pptx,.pps,.ppsx,.key,.odp,.doc,.docx,.xls,.xlsx,.odt,.ods,.txt,.zip,image/*,application/pdf";
 const GROUP_META = [
   { id: "red", label: "Red" },
   { id: "blue", label: "Blue" },
@@ -118,6 +122,7 @@ const BROWSE_ACTIONS = new Set([
   "open-activity",
   "open-topic",
   "open-pdf",
+  "open-file",
   "close-pdf",
   "start-practice",
   "practice-next",
@@ -312,10 +317,10 @@ function iconButtonHtml({ action, icon, label, id = "", extra = "", modifier = "
   return `<button type="button" class="icon-btn${modifier ? ` ${modifier}` : ""}" data-action="${action}" ${idAttr} ${extra} aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}" ${disabled ? "disabled" : ""}>${iconSvg(icon)}</button>`;
 }
 
-function iconFileLabelHtml({ upload, icon, label, modifier = "", extra = "" }) {
+function iconFileLabelHtml({ upload, icon, label, modifier = "", extra = "", accept = "application/pdf,.pdf" }) {
   return `<label class="icon-btn${modifier ? ` ${modifier}` : ""}" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">
     ${iconSvg(icon)}
-    <input class="hidden" type="file" accept="application/pdf,.pdf" data-upload="${escapeHtml(upload)}" ${extra} />
+    <input class="hidden" type="file" accept="${escapeHtml(accept)}" data-upload="${escapeHtml(upload)}" ${extra} />
   </label>`;
 }
 
@@ -445,14 +450,30 @@ function stampClassId(items, classId) {
   return items.map((item) => ({ ...item, classId: item.classId ?? classId }));
 }
 
+function normalizeClassResources(cls) {
+  const fromList = Array.isArray(cls?.resources)
+    ? cls.resources
+        .filter((item) => item?.fileId)
+        .map((item) => ({
+          id: item.id || uid(),
+          fileId: item.fileId,
+          fileName: item.fileName || "File",
+        }))
+    : [];
+  if (fromList.length) return fromList.slice(0, MAX_CLASS_RESOURCES);
+  if (cls?.journalFileId) {
+    return [{ id: uid(), fileId: cls.journalFileId, fileName: cls.journalFileName || "Journal.pdf" }];
+  }
+  return [];
+}
+
 function normalizeClass(cls) {
   return {
     id: cls.id,
     subject: cls.subject ?? "",
     grade: cls.grade ?? "",
     order: cls.order ?? 99,
-    journalFileId: cls.journalFileId ?? null,
-    journalFileName: cls.journalFileName ?? "",
+    resources: normalizeClassResources(cls),
   };
 }
 
@@ -982,34 +1003,102 @@ function classLabel(item) {
   return item.subject || item.grade || "Class";
 }
 
-function journalCardHtml(cls) {
-  if (!cls) return "";
-  if (isBrowse && !cls.journalFileId) return "";
-  const body = cls.journalFileId
-    ? `<p class="file-name">${escapeHtml(cls.journalFileName || "Journal.pdf")}</p>
-       <div class="row" style="margin-top: 0.7rem;">
-         <button type="button" class="btn btn--primary" data-action="open-pdf" data-file-id="${cls.journalFileId}" data-title="${escapeHtml(classLabel(cls))} journal">Open PDF</button>
-         ${
-           isBrowse
-             ? ""
-             : `<label class="btn">Replace
-           <input class="hidden" type="file" accept="application/pdf,.pdf" data-upload="journal" />
-         </label>
-         <button type="button" class="btn" data-action="remove-journal">Remove</button>`
-         }
-       </div>`
-    : `<p class="empty">Upload a PDF of this subject's journal.</p>
-       <label class="btn btn--primary" style="margin-top: 0.6rem;">Upload PDF
-         <input class="hidden" type="file" accept="application/pdf,.pdf" data-upload="journal" />
-       </label>`;
-  return `<div class="card">
-    <h2>Journal</h2>
-    ${body}
-  </div>`;
-}
-
 function currentClass() {
   return classById(currentClassId);
+}
+
+function fileExtension(name) {
+  const match = String(name || "").toLowerCase().match(/\.([a-z0-9]+)$/);
+  return match ? match[1] : "";
+}
+
+function isPdfName(name, type = "") {
+  return type === "application/pdf" || fileExtension(name) === "pdf";
+}
+
+function resourceKindLabel(fileName, type = "") {
+  if (isPdfName(fileName, type)) return "PDF";
+  const ext = fileExtension(fileName);
+  const labels = {
+    ppt: "PowerPoint",
+    pptx: "PowerPoint",
+    pps: "PowerPoint",
+    ppsx: "PowerPoint",
+    key: "Keynote",
+    odp: "Presentation",
+    doc: "Word",
+    docx: "Word",
+    xls: "Spreadsheet",
+    xlsx: "Spreadsheet",
+    ods: "Spreadsheet",
+    odt: "Document",
+    txt: "Text",
+    zip: "Archive",
+    png: "Image",
+    jpg: "Image",
+    jpeg: "Image",
+    gif: "Image",
+    webp: "Image",
+    heic: "Image",
+  };
+  return labels[ext] || (ext ? ext.toUpperCase() : "File");
+}
+
+function classResources(cls = currentClass()) {
+  return Array.isArray(cls?.resources) ? cls.resources.filter((item) => item?.fileId) : [];
+}
+
+function classResourcesCardHtml(cls, { canEdit = !isBrowse } = {}) {
+  const resources = classResources(cls);
+  if (!canEdit && !resources.length) return "";
+  const list = resources.length
+    ? `<div class="list">${resources
+        .map((resource) => {
+          const kind = resourceKindLabel(resource.fileName);
+          const openLabel = isPdfName(resource.fileName) ? "Open PDF" : "Download";
+          return `<div class="list-item">
+            <div class="list-item__main">
+              <div class="list-item__title">${escapeHtml(resource.fileName || "File")}</div>
+              <div class="list-item__meta">${escapeHtml(kind)}</div>
+            </div>
+            <div class="list-item__actions">
+              ${iconButtonHtml({
+                action: "open-file",
+                icon: isPdfName(resource.fileName) ? "pdf" : "view",
+                label: openLabel,
+                extra: `data-file-id="${resource.fileId}" data-title="${escapeHtml(resource.fileName || "File")}"`,
+                modifier: "icon-btn--primary",
+              })}
+              ${
+                canEdit
+                  ? iconButtonHtml({
+                      action: "remove-class-resource",
+                      icon: "trash",
+                      label: "Remove",
+                      id: resource.id,
+                      modifier: "icon-btn--danger",
+                    })
+                  : ""
+              }
+            </div>
+          </div>`;
+        })
+        .join("")}</div>`
+    : `<p class="empty">No files uploaded yet.</p>`;
+  const upload =
+    canEdit && resources.length < MAX_CLASS_RESOURCES
+      ? `<div class="row" style="margin-top: 0.75rem;">
+          <label class="btn btn--primary">Upload files
+            <input class="hidden" type="file" accept="${escapeHtml(RESOURCE_ACCEPT)}" multiple data-upload="class-resource" />
+          </label>
+        </div>`
+      : "";
+  return `<div class="card">
+    <h2>Resources</h2>
+    <p class="hint">PowerPoint, PDFs, and other useful files for this class.</p>
+    ${list}
+    ${upload}
+  </div>`;
 }
 
 function sortedClasses() {
@@ -1563,6 +1652,17 @@ async function storeImage(file) {
   return { id, name: file.name };
 }
 
+async function storeResourceFile(file) {
+  if (!file) return null;
+  if (file.size > MAX_RESOURCE_BYTES) {
+    window.alert("That file is too large. Please use a file under 40 MB.");
+    return null;
+  }
+  const id = uid();
+  await putFile(id, file, file.name);
+  return { id, name: file.name };
+}
+
 async function removeActivityFiles(activity) {
   if (!activity) return;
   const ids = [
@@ -1808,10 +1908,15 @@ function allClassesCardHtml() {
     <div class="list">${sortedClasses()
       .map((cls) => {
         const lesson = todaysLessonFor(cls.id);
-        return `<button type="button" class="nav-card" data-action="open-class" data-id="${cls.id}">
-          <span class="nav-card__label">${escapeHtml(classLabel(cls))}</span>
-          <span class="nav-card__desc">${lesson ? "Lesson in progress today" : `${studentsForClass(cls.id).length} students`}</span>
-        </button>`;
+        return `<div class="list-item">
+          <button type="button" class="list-item__main btn--ghost" data-action="open-class" data-id="${cls.id}" style="border: 0; padding: 0; min-height: 0; background: transparent;">
+            <div class="list-item__title">${escapeHtml(classLabel(cls))}</div>
+            <div class="list-item__meta">${lesson ? "Lesson in progress today" : `${studentsForClass(cls.id).length} students`}</div>
+          </button>
+          <div class="list-item__actions">
+            ${iconButtonHtml({ action: "delete-class", icon: "trash", label: "Delete this class", id: cls.id, modifier: "icon-btn--danger" })}
+          </div>
+        </div>`;
       })
       .join("")}</div>
   </div>`;
@@ -1947,7 +2052,10 @@ function renderClass() {
         <span class="nav-card__desc">${classLessons().length} saved lesson${classLessons().length === 1 ? "" : "s"}</span>
       </button>
     </div>
-    ${journalCardHtml(cls)}
+    ${classResourcesCardHtml(cls)}
+    <p class="row" style="margin-top: 0.25rem;">
+      <button type="button" class="btn btn--danger" data-action="delete-class" data-id="${cls.id}">Delete this class</button>
+    </p>
   `;
 }
 
@@ -1965,7 +2073,7 @@ function renderClasses() {
               </div>
               <div class="list-item__actions">
                 <button type="button" class="btn btn--small" data-action="edit-class" data-id="${cls.id}">Edit</button>
-                <button type="button" class="btn btn--small" data-action="delete-class" data-id="${cls.id}">Delete</button>
+                ${iconButtonHtml({ action: "delete-class", icon: "trash", label: "Delete this class", id: cls.id, modifier: "icon-btn--danger" })}
               </div>
             </div>
             <details class="category-block__fold class-roster__fold" data-fold="${escapeHtml(foldKey)}" ${foldOpenAttr(foldKey, count === 0)}>
@@ -2498,7 +2606,7 @@ function renderTopics() {
       ${list}
     </div>
     ${editor}
-    ${journalCardHtml(currentClass())}
+    ${isBrowse ? classResourcesCardHtml(currentClass(), { canEdit: false }) : ""}
   `;
 }
 
@@ -3417,6 +3525,37 @@ async function openPdf(fileId, title) {
   }
 }
 
+async function openStoredFile(fileId, title) {
+  try {
+    const record = await getFile(fileId);
+    if (!record?.blob) {
+      window.alert("This file is not stored on this device. Upload it again.");
+      return;
+    }
+    const name = record.name && record.name !== "file" ? record.name : title || "file";
+    if (isPdfName(name, record.blob.type || record.type || "")) {
+      await openPdf(fileId, title || name);
+      return;
+    }
+    const url = URL.createObjectURL(record.blob);
+    if ((record.blob.type || "").startsWith("image/")) {
+      window.open(url, "_blank", "noopener,noreferrer");
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      return;
+    }
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = name;
+    link.rel = "noopener noreferrer";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } catch {
+    window.alert("The file could not be opened.");
+  }
+}
+
 async function saveNotesPdf(file, noteId) {
   const topic = topicById(selectedTopicId);
   if (!topic || !file) return;
@@ -3440,14 +3579,20 @@ async function saveNotesPdf(file, noteId) {
   render();
 }
 
-async function saveJournalPdf(file) {
+async function saveClassResources(files) {
   const cls = currentClass();
-  if (!cls || !file) return;
-  const stored = await storePdf(file);
-  if (!stored) return;
-  if (cls.journalFileId) await deleteFile(cls.journalFileId);
-  cls.journalFileId = stored.id;
-  cls.journalFileName = stored.name;
+  if (!cls || !files?.length) return;
+  if (!Array.isArray(cls.resources)) cls.resources = [];
+  for (const file of files) {
+    if (cls.resources.length >= MAX_CLASS_RESOURCES) {
+      window.alert(`You can store up to ${MAX_CLASS_RESOURCES} files on a class.`);
+      break;
+    }
+    const stored = await storeResourceFile(file);
+    if (stored) {
+      cls.resources.push({ id: uid(), fileId: stored.id, fileName: stored.name });
+    }
+  }
   saveState();
   render();
 }
@@ -3648,6 +3793,18 @@ function handleAction(action, button) {
   if (action === "adjust-merit") adjustLessonMerit(id, Number(mode));
   if (action === "regroup") regroupLesson(mode);
   if (action === "open-pdf") openPdf(button.dataset.fileId, button.dataset.title);
+  if (action === "open-file") openStoredFile(button.dataset.fileId, button.dataset.title);
+  if (action === "remove-class-resource") {
+    const cls = currentClass();
+    const resource = cls?.resources?.find((item) => item.id === id);
+    if (!resource) return;
+    confirmDelete(`Remove ${resource.fileName || "this file"} from the class?`, async () => {
+      if (resource.fileId) await deleteFile(resource.fileId);
+      cls.resources = (cls.resources ?? []).filter((item) => item.id !== id);
+      saveState();
+      render();
+    }, "Remove");
+  }
   if (action === "remove-notes") {
     const topic = topicById(selectedTopicId);
     const note = topicNotes(topic).find((item) => item.id === id);
@@ -3656,17 +3813,6 @@ function handleAction(action, button) {
       await deleteFile(note.fileId);
       topic.notesFiles = topicNotes(topic).filter((item) => item.id !== note.id);
       syncTopicNotesLegacy(topic);
-      saveState();
-      render();
-    }, "Remove");
-  }
-  if (action === "remove-journal") {
-    const cls = currentClass();
-    confirmDelete("Remove this subject's journal PDF?", async () => {
-      if (!cls) return;
-      await deleteFile(cls.journalFileId);
-      cls.journalFileId = null;
-      cls.journalFileName = "";
       saveState();
       render();
     }, "Remove");
@@ -3874,7 +4020,11 @@ function handleAction(action, button) {
   if (action === "delete-class") {
     confirmDelete("Delete this class, its students, topics, and lessons?", async () => {
       const cls = classById(id);
-      if (cls?.journalFileId) await deleteFile(cls.journalFileId);
+      const classFileIds = [
+        cls?.journalFileId,
+        ...(cls?.resources ?? []).map((item) => item.fileId),
+      ].filter(Boolean);
+      await Promise.all(classFileIds.map((fileId) => deleteFile(fileId)));
       const topics = state.topics.filter((topic) => topic.classId === id);
       await Promise.all(topics.map((topic) => removeTopicFiles(topic)));
       const topicIds = new Set(topics.map((topic) => topic.id));
@@ -3891,7 +4041,8 @@ function handleAction(action, button) {
       state.classes = state.classes.filter((item) => item.id !== id);
       if (currentClassId === id) currentClassId = null;
       saveState();
-      render();
+      if (currentPage === "class") showPage("settings");
+      else render();
     });
   }
   if (action === "add-standard-periods") {
@@ -4129,8 +4280,8 @@ document.getElementById("app").addEventListener("change", (event) => {
     saveNotesPdf(event.target.files[0], event.target.dataset.id);
     event.target.value = "";
   }
-  if (event.target.dataset.upload === "journal" && event.target.files?.[0]) {
-    saveJournalPdf(event.target.files[0]);
+  if (event.target.dataset.upload === "class-resource" && event.target.files?.length) {
+    saveClassResources([...event.target.files]);
     event.target.value = "";
   }
   if (event.target.dataset.upload === "activity-image" && event.target.files?.length) {
