@@ -36,15 +36,18 @@ const CYCLE_WEEKS = [
 ];
 
 const QUICK_LINKS = [
-  { id: "omada", name: "Omada", href: "https://use1-omada-cloud.tplinkcloud.com/#/cloudAccessManager" },
-  { id: "classroom", name: "Google Classroom", href: "https://classroom.google.com" },
   { id: "veracross", name: "Veracross", href: "https://portals.veracross.com/windsor/faculty" },
-  { id: "wheniwork", name: "When I Work", href: "https://appx.wheniwork.com/" },
+  { id: "classroom", name: "Google Classroom", href: "https://classroom.google.com" },
   { id: "gmail", name: "GMail", href: "https://mail.google.com/mail/u/1/#inbox" },
-  { id: "drive", name: "Google Drive", href: "https://drive.google.com/" },
-  { id: "gemini", name: "Gemini", href: "https://gemini.google.com/app" },
-  { id: "calendar", name: "Google Calendar", href: "https://calendar.google.com/calendar/u/1/r" },
   { id: "gchat", name: "GChat", href: "https://chat.google.com/u/1/app/home" },
+  { id: "drive", name: "Google Drive", href: "https://drive.google.com/" },
+  { id: "calendar", name: "Google Calendar", href: "https://calendar.google.com/calendar/u/1/r" },
+  { id: "gemini", name: "Gemini", href: "https://gemini.google.com/app" },
+  { id: "studentwifi", name: "Student Wi-Fi", href: "https://docs.google.com/spreadsheets/d/1fB7GLcd-ttqL6tnEYNO3dCS5tmcD9vo3E0ncIl4sEqA/edit?gid=404655787#gid=404655787" },
+  { id: "facultywifi", name: "Faculty Wi-Fi", href: "https://docs.google.com/spreadsheets/d/1LA93s7Ct8JWnuDhcTzMqOO2U8ny8jjuOw6oPB_9x46g/edit?gid=0#gid=0" },
+  { id: "windsortech", name: "Windsor Tech", href: "https://docs.google.com/spreadsheets/d/1tgyZnneTx6IvaxJ_2euDrSdP2ohDMghithmMIrmK4BA/edit?gid=823331193#gid=823331193" },
+  { id: "omada", name: "Omada", href: "https://use1-omada-cloud.tplinkcloud.com/#/cloudAccessManager" },
+  { id: "wheniwork", name: "When I Work", href: "https://appx.wheniwork.com/" },
 ];
 
 const DEFAULT_CLASSES = [
@@ -280,6 +283,12 @@ function iconSvg(name) {
     down: '<path d="m6 10 6 6 6-6"/>',
     omada:
       '<path d="M5 12.2a9.5 9.5 0 0 1 14 0"/><path d="M8.2 15.3a5.4 5.4 0 0 1 7.6 0"/><circle cx="12" cy="18.3" r="1.15" fill="currentColor" stroke="none"/>',
+    studentwifi:
+      '<path d="M4.8 9.2a10 10 0 0 1 14.4 0"/><path d="M7.6 12.2a6 6 0 0 1 8.8 0"/><circle cx="8.2" cy="18.2" r="1.7"/><path d="M5.4 21.2c.4-1.7 1.4-2.6 2.8-2.6s2.4.9 2.8 2.6"/>',
+    facultywifi:
+      '<path d="M4.8 8.4a10 10 0 0 1 14.4 0"/><path d="M7.6 11.4a6 6 0 0 1 8.8 0"/><path d="m8 15.2 4-2.4 4 2.4V21H8z"/><path d="M11 21v-3.2h2V21"/>',
+    windsortech:
+      '<path d="M14.2 6.2a3.2 3.2 0 0 1 3.6 3.6l-6.4 6.4-3.2.8.8-3.2 6.4-6.4z"/><path d="M8.2 16.8 5.4 19.6"/><path d="M4.8 12h2.4M12 19.2v2.2"/>',
     classroom: '<path d="M4 5.5h16v11H4z"/><path d="M8 20h8"/><path d="M12 16.5V20"/>',
     veracross:
       '<path d="m3 10 9-6 9 6"/><path d="M5 9.8V20h14V9.8"/><path d="M9.5 20v-6h5v6"/>',
@@ -1779,7 +1788,7 @@ function renderBrowseHome() {
 
 function quickLinksHtml() {
   return `<div class="card">
-    <h2>Quick links</h2>
+    <h2>Quick Links</h2>
     <div class="quick-links">${QUICK_LINKS.map(
       (link) =>
         `<a class="quick-link" href="${escapeHtml(link.href)}" target="_blank" rel="noopener noreferrer">
@@ -1862,7 +1871,7 @@ function renderHome() {
     scheduleHtml = `<div class="card">
       <h2 class="schedule-heading">Today’s Schedule</h2>
       <p class="schedule-day">${escapeHtml(dayName)}</p>
-      ${rows ? `<div class="schedule">${rows}</div>` : `<p class="empty">No classes are scheduled for ${escapeHtml(dayName)}.</p>`}
+      ${rows ? `<div class="schedule">${rows}</div>` : ""}
     </div>`;
   }
 

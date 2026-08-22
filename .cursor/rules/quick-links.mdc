@@ -1,0 +1,11 @@
+---
+description: How to add homepage Quick Links
+globs: app.js
+alwaysApply: true
+---
+
+# Quick Links
+
+When adding new homepage Quick Links, append them to the end of the `QUICK_LINKS` array in `app.js`. Do not reorder existing links or insert new ones next to similar items.
+
+Add a matching icon in `iconSvg` if needed. Open each link in a new tab, same as the existing items.
