@@ -3160,10 +3160,15 @@ function renderHistory() {
         .map((lesson) => {
           const topic = topicById(lesson.topicId);
           const total = activitiesForTopic(lesson.topicId).length;
-          return `<button type="button" class="nav-card history-item" data-action="open-lesson" data-id="${lesson.id}">
-            <span class="nav-card__label">${escapeHtml(topic?.name ?? "Deleted topic")}</span>
-            <span class="nav-card__desc">${formatShortDate(lesson.date)} · ${lesson.completedActivityIds.length} of ${total} activities · ${groupingLabel(lesson)}</span>
-          </button>`;
+          return `<div class="list-item">
+            <button type="button" class="list-item__main btn--ghost" data-action="open-lesson" data-id="${lesson.id}" style="border: 0; padding: 0; min-height: 0; background: transparent;">
+              <div class="list-item__title">${escapeHtml(topic?.name ?? "Deleted topic")}</div>
+              <div class="list-item__meta">${formatShortDate(lesson.date)} · ${lesson.completedActivityIds.length} of ${total} activities · ${groupingLabel(lesson)}</div>
+            </button>
+            <div class="list-item__actions">
+              ${iconButtonHtml({ action: "delete-lesson", icon: "trash", label: "Delete this lesson", id: lesson.id, modifier: "icon-btn--danger" })}
+            </div>
+          </div>`;
         })
         .join("")
     : `<p class="empty">Finished lessons will appear here.</p>`;
@@ -3600,6 +3605,15 @@ function handleAction(action, button) {
   }
   if (action === "go-students") showPage("students");
   if (action === "go-history") showPage("history");
+  if (action === "delete-lesson") {
+    confirmDelete("Delete this past lesson? Attendance, merits, groups, and activity ticks will be removed.", () => {
+      state.lessons = state.lessons.filter((lesson) => lesson.id !== id);
+      if (openLessonId === id) openLessonId = null;
+      saveState();
+      if (currentPage === "lesson") showPage(currentClass() ? "history" : "home");
+      else render();
+    });
+  }
   if (action === "go-settings") showPage("settings");
   if (action === "close-pdf") {
     document.getElementById("pdf-frame").src = "";
